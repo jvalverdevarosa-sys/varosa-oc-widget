@@ -1,0 +1,1195 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OC Varosa</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --varosa-cyan: #15C9E4;
+    --varosa-blue: #4672B1;
+    --varosa-gold: #FFAD00;
+    --varosa-dark: #325895;
+    --bg-main: #f0f2f5;
+    --bg-card: #ffffff;
+    --bg-header: #1e293b;
+    --bg-row-alt: #f8fafc;
+    --bg-row-hover: #eff6ff;
+    --bg-editable: #fffef5;
+    --bg-readonly: #f1f5f9;
+    --border-light: #e2e8f0;
+    --border-focus: var(--varosa-cyan);
+    --text-primary: #1e293b;
+    --text-secondary: #64748b;
+    --text-muted: #94a3b8;
+    --text-on-dark: #f8fafc;
+    --estado-negativo: #dc2626;
+    --estado-quiebre: #ea580c;
+    --estado-critico: #d97706;
+    --estado-alerta: #ca8a04;
+    --estado-prealerta: #65a30d;
+    --estado-normal: #16a34a;
+    --font-body: 'DM Sans', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    --radius: 8px;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.05);
+    --shadow-md: 0 4px 6px -1px rgba(0,0,0,0.07), 0 2px 4px -2px rgba(0,0,0,0.05);
+    --shadow-lg: 0 10px 15px -3px rgba(0,0,0,0.08), 0 4px 6px -4px rgba(0,0,0,0.04);
+    --transition: 150ms ease;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  
+  body {
+    font-family: var(--font-body);
+    background: var(--bg-main);
+    color: var(--text-primary);
+    font-size: 13px;
+    line-height: 1.4;
+  }
+
+  /* ===== LAYOUT ===== */
+  .app { max-width: 100%; padding: 16px; }
+
+  .app-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: linear-gradient(135deg, var(--varosa-dark) 0%, var(--varosa-blue) 100%);
+    border-radius: var(--radius) var(--radius) 0 0;
+    color: var(--text-on-dark);
+  }
+  .app-header h1 {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: -0.01em;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .app-header h1::before {
+    content: '';
+    width: 3px;
+    height: 20px;
+    background: var(--varosa-gold);
+    border-radius: 2px;
+  }
+  .header-actions { display: flex; gap: 6px; }
+  .header-actions button {
+    padding: 6px 14px;
+    border: 1px solid rgba(255,255,255,0.2);
+    background: rgba(255,255,255,0.08);
+    color: var(--text-on-dark);
+    border-radius: 6px;
+    font-family: var(--font-body);
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all var(--transition);
+  }
+  .header-actions button:hover {
+    background: rgba(255,255,255,0.18);
+    border-color: rgba(255,255,255,0.35);
+  }
+  .header-actions .btn-crear {
+    background: var(--varosa-gold);
+    color: var(--text-primary);
+    border-color: var(--varosa-gold);
+    font-weight: 600;
+  }
+  .header-actions .btn-crear:hover { opacity: 0.9; }
+  .header-actions .btn-crear:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  .main-card {
+    background: var(--bg-card);
+    border-radius: 0 0 var(--radius) var(--radius);
+    box-shadow: var(--shadow-md);
+    overflow: hidden;
+  }
+
+  /* ===== FILTROS ===== */
+  .filters-bar {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border-light);
+    flex-wrap: wrap;
+  }
+  .filter-group { display: flex; flex-direction: column; gap: 4px; }
+  .filter-group label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+  }
+  .filter-group select,
+  .filter-group input {
+    padding: 7px 10px;
+    border: 1px solid var(--border-light);
+    border-radius: 6px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    background: white;
+    color: var(--text-primary);
+    transition: border-color var(--transition);
+  }
+  .filter-group select:focus,
+  .filter-group input:focus {
+    outline: none;
+    border-color: var(--border-focus);
+    box-shadow: 0 0 0 3px rgba(21,201,228,0.1);
+  }
+  .filter-group .select-proveedor { width: 320px; }
+  .filter-group .select-estado { width: 140px; }
+  .filter-group .select-abc { width: 120px; }
+  .filter-group .input-buscar { width: 220px; }
+
+  .filter-stats {
+    margin-left: auto;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+  }
+  .stat-pill {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 10px;
+    background: var(--bg-readonly);
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-secondary);
+  }
+  .stat-pill strong {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+
+  /* ===== STATUS BAR ===== */
+  .status-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 20px;
+    background: #fefce8;
+    border-bottom: 1px solid #fef08a;
+    font-size: 12px;
+    color: #854d0e;
+    display: none;
+  }
+  .status-bar.visible { display: flex; }
+  .status-bar.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
+  .status-bar.success { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
+  .status-bar.loading { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+
+  /* ===== TABLA ===== */
+  .table-container {
+    overflow-x: auto;
+    max-height: 60vh;
+    overflow-y: auto;
+    position: relative;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    table-layout: fixed;
+  }
+  thead { position: sticky; top: 0; z-index: 10; }
+  thead th {
+    background: var(--bg-header);
+    color: var(--text-on-dark);
+    padding: 8px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    text-align: left;
+    white-space: nowrap;
+    border-right: 1px solid rgba(255,255,255,0.06);
+    user-select: none;
+  }
+  thead th.col-num { text-align: center; }
+  thead th.col-right { text-align: right; }
+  thead th.col-editable {
+    background: #2d3a4f;
+    position: relative;
+  }
+  thead th.col-editable::after {
+    content: '✎';
+    position: absolute;
+    top: 2px;
+    right: 4px;
+    font-size: 9px;
+    opacity: 0.5;
+  }
+
+  /* Column widths */
+  .w-num { width: 36px; }
+  .w-estado { width: 80px; }
+  .w-abc { width: 50px; }
+  .w-desc { width: 280px; }
+  .w-codigo { width: 80px; }
+  .w-stock { width: 70px; }
+  .w-venta { width: 75px; }
+  .w-alcance { width: 70px; }
+  .w-sugerido { width: 75px; }
+  .w-cantidad { width: 80px; }
+  .w-costo { width: 85px; }
+  .w-desc-pct { width: 60px; }
+  .w-total { width: 95px; }
+  .w-analisis { width: 95px; }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border-light);
+    transition: background var(--transition);
+  }
+  tbody tr:nth-child(even) { background: var(--bg-row-alt); }
+  tbody tr:hover { background: var(--bg-row-hover); }
+  tbody tr.row-modified { background: #fefce8; }
+  tbody tr.row-selected {
+    outline: 2px solid var(--varosa-cyan);
+    outline-offset: -2px;
+  }
+
+  tbody td {
+    padding: 4px 8px;
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    vertical-align: middle;
+  }
+  td.cell-num {
+    text-align: center;
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+  td.cell-right {
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 12px;
+  }
+  td.cell-desc {
+    white-space: normal;
+    word-break: break-word;
+    line-height: 1.3;
+    max-width: 280px;
+  }
+
+  /* Editable cells */
+  td.cell-editable {
+    padding: 2px 4px;
+  }
+  td.cell-editable input {
+    width: 100%;
+    padding: 4px 6px;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    text-align: right;
+    background: var(--bg-editable);
+    color: var(--text-primary);
+    transition: all var(--transition);
+  }
+  td.cell-editable input:hover {
+    border-color: var(--border-light);
+  }
+  td.cell-editable input:focus {
+    outline: none;
+    border-color: var(--varosa-cyan);
+    box-shadow: 0 0 0 2px rgba(21,201,228,0.15);
+    background: white;
+  }
+  td.cell-editable input.modified {
+    background: #fef9c3;
+    border-color: var(--varosa-gold);
+    font-weight: 600;
+  }
+
+  /* Estado badges */
+  .badge {
+    display: inline-block;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+  }
+  .badge-negativo { background: #fef2f2; color: var(--estado-negativo); }
+  .badge-quiebre { background: #fff7ed; color: var(--estado-quiebre); }
+  .badge-critico { background: #fffbeb; color: var(--estado-critico); }
+  .badge-alerta { background: #fefce8; color: var(--estado-alerta); }
+  .badge-pre-alerta { background: #f7fee7; color: var(--estado-prealerta); }
+  .badge-normal { background: #f0fdf4; color: var(--estado-normal); }
+
+  .badge-abc { 
+    font-family: var(--font-mono);
+    font-weight: 700; 
+    font-size: 11px;
+  }
+  .abc-a { color: var(--estado-negativo); }
+  .abc-b { color: var(--estado-alerta); }
+  .abc-c { color: var(--text-secondary); }
+
+  .badge-analisis {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 600;
+  }
+  .analisis-urgente { background: #fef2f2; color: #dc2626; }
+  .analisis-pedir { background: #eff6ff; color: #2563eb; }
+  .analisis-ajustar { background: #fff7ed; color: #ea580c; }
+  .analisis-no-pedir { background: #f1f5f9; color: #64748b; }
+  .analisis-sobre-stock { background: #fefce8; color: #a16207; }
+  .analisis-sin-consumo { background: #f8fafc; color: #94a3b8; }
+
+  /* ===== FOOTER / RESUMEN ===== */
+  .footer-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 20px;
+    border-top: 2px solid var(--border-light);
+    background: var(--bg-readonly);
+  }
+  .footer-left {
+    display: flex;
+    gap: 20px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .footer-left span strong {
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+  }
+  .footer-totals {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+  }
+  .total-item {
+    text-align: right;
+  }
+  .total-item .total-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text-secondary);
+    font-weight: 600;
+  }
+  .total-item .total-value {
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--text-primary);
+  }
+  .total-item.total-grand .total-value {
+    font-size: 18px;
+    color: var(--varosa-dark);
+  }
+
+  /* ===== EMPTY STATE ===== */
+  .empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--text-muted);
+  }
+  .empty-state .empty-icon {
+    font-size: 48px;
+    margin-bottom: 12px;
+    opacity: 0.4;
+  }
+  .empty-state h3 {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 4px;
+  }
+
+  /* ===== LOADING ===== */
+  .loading-overlay {
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.85);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 20;
+  }
+  .spinner {
+    width: 32px;
+    height: 32px;
+    border: 3px solid var(--border-light);
+    border-top-color: var(--varosa-cyan);
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ===== MODAL ===== */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.4);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+  }
+  .modal-backdrop.hidden { display: none; }
+  .modal {
+    background: white;
+    border-radius: 12px;
+    box-shadow: var(--shadow-lg);
+    padding: 24px;
+    max-width: 480px;
+    width: 90%;
+  }
+  .modal h3 {
+    font-size: 16px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .modal p {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin-bottom: 20px;
+    line-height: 1.5;
+  }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+  }
+  .modal-actions button {
+    padding: 8px 18px;
+    border-radius: 6px;
+    font-family: var(--font-body);
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    border: 1px solid var(--border-light);
+    background: white;
+    color: var(--text-primary);
+    transition: all var(--transition);
+  }
+  .modal-actions button:hover { background: var(--bg-readonly); }
+  .modal-actions .btn-confirm {
+    background: var(--varosa-blue);
+    color: white;
+    border-color: var(--varosa-blue);
+  }
+  .modal-actions .btn-confirm:hover { opacity: 0.9; }
+
+  /* ===== SCROLLBAR ===== */
+  .table-container::-webkit-scrollbar { width: 8px; height: 8px; }
+  .table-container::-webkit-scrollbar-track { background: var(--bg-readonly); }
+  .table-container::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 4px; }
+  .table-container::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+  /* ===== TOOLTIP ===== */
+  [data-tooltip] { position: relative; cursor: help; }
+  [data-tooltip]:hover::after {
+    content: attr(data-tooltip);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 4px 8px;
+    background: var(--bg-header);
+    color: var(--text-on-dark);
+    font-size: 11px;
+    border-radius: 4px;
+    white-space: nowrap;
+    z-index: 30;
+    pointer-events: none;
+  }
+</style>
+</head>
+<body>
+<div class="app" id="app">
+
+  <!-- HEADER -->
+  <div class="app-header">
+    <h1>Órdenes de Compra</h1>
+    <div class="header-actions">
+      <button onclick="limpiarOC()">Nuevo</button>
+      <button onclick="exportarResumen()">Exportar</button>
+      <button class="btn-crear" id="btnCrearOC" onclick="confirmarCrearOC()" disabled>
+        Crear OC en Borrador
+      </button>
+    </div>
+  </div>
+
+  <div class="main-card">
+    <!-- STATUS BAR -->
+    <div class="status-bar" id="statusBar">
+      <span id="statusMessage"></span>
+      <button onclick="ocultarStatus()" style="background:none;border:none;cursor:pointer;font-size:14px;">✕</button>
+    </div>
+
+    <!-- FILTERS -->
+    <div class="filters-bar">
+      <div class="filter-group">
+        <label>Proveedor</label>
+        <select id="selProveedor" class="select-proveedor" onchange="cargarProductos()">
+          <option value="">— Seleccionar proveedor —</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Estado</label>
+        <select id="filtroEstado" class="select-estado" onchange="aplicarFiltros()">
+          <option value="">Todos</option>
+          <option value="NEGATIVO">Negativo</option>
+          <option value="QUIEBRE">Quiebre</option>
+          <option value="CRITICO">Crítico</option>
+          <option value="ALERTA">Alerta</option>
+          <option value="NORMAL">Normal</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>ABC</label>
+        <select id="filtroABC" class="select-abc" onchange="aplicarFiltros()">
+          <option value="">Todos</option>
+          <option value="A">A</option>
+          <option value="B">B</option>
+          <option value="C">C</option>
+        </select>
+      </div>
+      <div class="filter-group">
+        <label>Buscar producto</label>
+        <input type="text" id="filtroBuscar" class="input-buscar" placeholder="Código o descripción..." oninput="aplicarFiltros()">
+      </div>
+      <div class="filter-stats">
+        <div class="stat-pill">
+          Productos: <strong id="statTotal">0</strong>
+        </div>
+        <div class="stat-pill">
+          A pedir: <strong id="statPedir">0</strong>
+        </div>
+      </div>
+    </div>
+
+    <!-- TABLE -->
+    <div class="table-container" id="tableContainer" style="position:relative;">
+      <table>
+        <thead>
+          <tr>
+            <th class="w-num col-num">#</th>
+            <th class="w-estado">Estado</th>
+            <th class="w-abc col-num">ABC</th>
+            <th class="w-codigo">Código</th>
+            <th class="w-desc">Descripción</th>
+            <th class="w-stock col-right" data-tooltip="Stock actual en sistema">Stock</th>
+            <th class="w-venta col-right" data-tooltip="Venta semanal promedio">Vta/Sem</th>
+            <th class="w-alcance col-right" data-tooltip="Semanas de alcance con stock actual">Alcance</th>
+            <th class="w-sugerido col-right" data-tooltip="Cantidad sugerida por el sistema">Sugerido</th>
+            <th class="w-cantidad col-right col-editable" data-tooltip="Cantidad a pedir (editable)">Cantidad</th>
+            <th class="w-costo col-right">Costo Unit.</th>
+            <th class="w-desc-pct col-right col-editable" data-tooltip="% descuento de compra">%Desc</th>
+            <th class="w-total col-right">Total</th>
+            <th class="w-analisis">Análisis</th>
+          </tr>
+        </thead>
+        <tbody id="tbodyProductos">
+        </tbody>
+      </table>
+
+      <!-- EMPTY STATE -->
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">📦</div>
+        <h3>Seleccioná un proveedor para comenzar</h3>
+        <p>Los productos y sugerencias de compra se cargarán automáticamente</p>
+      </div>
+    </div>
+
+    <!-- FOOTER / TOTALS -->
+    <div class="footer-bar" id="footerBar" style="display:none;">
+      <div class="footer-left">
+        <span>Líneas: <strong id="footLineas">0</strong></span>
+        <span>Con cantidad: <strong id="footConCantidad">0</strong></span>
+        <span>Modificadas: <strong id="footModificadas">0</strong></span>
+      </div>
+      <div class="footer-totals">
+        <div class="total-item">
+          <div class="total-label">Subtotal</div>
+          <div class="total-value" id="totalSubtotal">₡0</div>
+        </div>
+        <div class="total-item">
+          <div class="total-label">Descuento</div>
+          <div class="total-value" id="totalDescuento">-₡0</div>
+        </div>
+        <div class="total-item total-grand">
+          <div class="total-label">Total Estimado</div>
+          <div class="total-value" id="totalGrand">₡0</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CONFIRMAR OC -->
+<div class="modal-backdrop hidden" id="modalConfirm">
+  <div class="modal">
+    <h3>Confirmar creación de OC</h3>
+    <p id="modalMessage">Se creará una Orden de Compra en borrador...</p>
+    <div class="modal-actions">
+      <button onclick="cerrarModal()">Cancelar</button>
+      <button class="btn-confirm" onclick="ejecutarCrearOC()">Sí, crear OC</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// VAROSA - Widget OC para Zoho Creator (via n8n webhooks)
+// ============================================================
+// Comunicación: Widget HTML (Easypanel) → n8n webhooks → Zoho
+// Patrón consistente con dashboard de ventas y otros widgets.
+// ============================================================
+
+// ===== CONFIGURACIÓN =====
+// Cambiar esta URL base al dominio real de n8n en Easypanel
+const N8N_BASE = 'https://n8n-n8n.1efluw.easypanel.host';
+const ENDPOINTS = {
+  proveedores: `${N8N_BASE}/webhook/oc-proveedores`,
+  productos:   `${N8N_BASE}/webhook/oc-productos`,
+  crearOC:     `${N8N_BASE}/webhook/oc-crear`,
+};
+
+// Modo demo: si n8n no responde, usar datos simulados
+let MODO_DEMO = false;
+
+// Estado global
+let productosOriginal = [];   // Datos sin filtrar del proveedor actual
+let productosFiltrados = [];  // Datos filtrados visibles
+let proveedorActual = '';
+let modificaciones = {};       // { index: { cantidad: X, descuento: Y } }
+
+// ============================================================
+// INICIALIZACIÓN
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  cargarProveedores();
+});
+
+// ============================================================
+// CARGAR PROVEEDORES
+// ============================================================
+async function cargarProveedores() {
+  const sel = document.getElementById('selProveedor');
+  mostrarStatus('Cargando proveedores...', 'loading');
+
+  try {
+    const resp = await fetch(ENDPOINTS.proveedores, { 
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+    
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    if (data.proveedores && Array.isArray(data.proveedores)) {
+      data.proveedores.forEach(p => {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        sel.appendChild(opt);
+      });
+      mostrarStatus(`${data.proveedores.length} proveedores cargados`, 'success');
+    } else {
+      throw new Error('Formato de respuesta inválido');
+    }
+  } catch(e) {
+    console.warn('n8n no disponible, usando modo demo:', e.message);
+    MODO_DEMO = true;
+    cargarProveedoresDemo();
+    mostrarStatus('Modo demo — n8n no disponible', 'loading');
+  }
+}
+
+function cargarProveedoresDemo() {
+  const sel = document.getElementById('selProveedor');
+  const proveedoresDemo = [
+    'DIVERSEY COSTA RICA SRL',
+    'ESSITY CENTROAMERICA S.A.',
+    'GLOBAL KEMICAL S.A.',
+    'INDUSTRIAS GAREND S.A.',
+    'SOLQUISA',
+    'IMPORTADORA PROMARK DE CENTROAMERICA S.A.',
+    'APEX SUMINISTROS S.A'
+  ];
+  proveedoresDemo.forEach(p => {
+    const opt = document.createElement('option');
+    opt.value = p;
+    opt.textContent = p;
+    sel.appendChild(opt);
+  });
+}
+
+// ============================================================
+// CARGAR PRODUCTOS POR PROVEEDOR
+// ============================================================
+async function cargarProductos() {
+  const proveedor = document.getElementById('selProveedor').value;
+  if (!proveedor) {
+    productosOriginal = [];
+    productosFiltrados = [];
+    modificaciones = {};
+    renderTabla();
+    return;
+  }
+
+  proveedorActual = proveedor;
+  modificaciones = {};
+  mostrarLoading(true);
+
+  if (MODO_DEMO) {
+    setTimeout(() => {
+      mostrarLoading(false);
+      productosOriginal = generarDatosDemo(proveedor);
+      aplicarFiltros();
+      mostrarStatus(`${productosOriginal.length} productos (DEMO)`, 'success');
+    }, 400);
+    return;
+  }
+
+  try {
+    const url = `${ENDPOINTS.productos}?proveedor=${encodeURIComponent(proveedor)}`;
+    const resp = await fetch(url, {
+      method: 'GET',
+      headers: { 'Accept': 'application/json' }
+    });
+
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    mostrarLoading(false);
+
+    if (data.productos && Array.isArray(data.productos)) {
+      productosOriginal = data.productos;
+      aplicarFiltros();
+      mostrarStatus(`${productosOriginal.length} productos cargados para ${proveedor}`, 'success');
+    } else {
+      productosOriginal = [];
+      aplicarFiltros();
+      mostrarStatus('Sin productos para este proveedor', 'loading');
+    }
+  } catch(e) {
+    mostrarLoading(false);
+    mostrarStatus('Error al cargar productos: ' + e.message, 'error');
+    productosOriginal = [];
+    aplicarFiltros();
+  }
+}
+
+// ============================================================
+// FILTROS
+// ============================================================
+function aplicarFiltros() {
+  const estado = document.getElementById('filtroEstado').value;
+  const abc = document.getElementById('filtroABC').value;
+  const buscar = document.getElementById('filtroBuscar').value.toLowerCase().trim();
+
+  productosFiltrados = productosOriginal.filter(p => {
+    if (estado && p.Estado !== estado) return false;
+    if (abc && !p.Rotacion?.startsWith(abc)) return false;
+    if (buscar) {
+      const matchDesc = (p.Descripcion || '').toLowerCase().includes(buscar);
+      const matchCod = (p.Codigo || '').toLowerCase().includes(buscar);
+      if (!matchDesc && !matchCod) return false;
+    }
+    return true;
+  });
+
+  renderTabla();
+}
+
+// ============================================================
+// RENDER TABLA
+// ============================================================
+function renderTabla() {
+  const tbody = document.getElementById('tbodyProductos');
+  const empty = document.getElementById('emptyState');
+  const footer = document.getElementById('footerBar');
+  const btnCrear = document.getElementById('btnCrearOC');
+
+  if (productosFiltrados.length === 0) {
+    tbody.innerHTML = '';
+    empty.style.display = 'block';
+    footer.style.display = 'none';
+    btnCrear.disabled = true;
+    actualizarStats();
+    return;
+  }
+
+  empty.style.display = 'none';
+  footer.style.display = 'flex';
+
+  let html = '';
+  productosFiltrados.forEach((p, i) => {
+    const idx = productosOriginal.indexOf(p); // index real para modificaciones
+    const mod = modificaciones[idx] || {};
+    const isModified = mod.cantidad !== undefined || mod.descuento !== undefined;
+
+    const cantidad = mod.cantidad !== undefined ? mod.cantidad : (p.Sugerido > 0 ? p.Sugerido : '');
+    const descPct = mod.descuento !== undefined ? mod.descuento : (p.Descuento_Compra || 0);
+    const costo = parseFloat(p.Costo_Unitario) || 0;
+    const cant = parseFloat(cantidad) || 0;
+    const desc = parseFloat(descPct) || 0;
+    const subtotal = cant * costo;
+    const descMonto = subtotal * desc / 100;
+    const total = subtotal - descMonto;
+
+    html += `<tr class="${isModified ? 'row-modified' : ''}" data-idx="${idx}">
+      <td class="cell-num">${i + 1}</td>
+      <td>${badgeEstado(p.Estado)}</td>
+      <td class="cell-num">${badgeABC(p.Rotacion)}</td>
+      <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);">${esc(p.Codigo || '')}</td>
+      <td class="cell-desc" title="${esc(p.Descripcion)}">${esc(p.Descripcion)}</td>
+      <td class="cell-right">${fmtNum(p.Stock_Sistema)}</td>
+      <td class="cell-right">${fmtDec(p.Venta_Semanal)}</td>
+      <td class="cell-right">${fmtDec(p.Alcance_Semanal)}</td>
+      <td class="cell-right" style="color:var(--varosa-blue);font-weight:500;">${p.Sugerido > 0 ? fmtNum(p.Sugerido) : '—'}</td>
+      <td class="cell-editable">
+        <input type="number" value="${cantidad}" min="0" step="1"
+          class="${isModified && mod.cantidad !== undefined ? 'modified' : ''}"
+          onchange="onCantidadChange(${idx}, this)"
+          onfocus="this.select()">
+      </td>
+      <td class="cell-right">${fmtMoney(costo)}</td>
+      <td class="cell-editable">
+        <input type="number" value="${descPct}" min="0" max="100" step="0.5"
+          class="${isModified && mod.descuento !== undefined ? 'modified' : ''}"
+          onchange="onDescuentoChange(${idx}, this)"
+          onfocus="this.select()"
+          style="width:50px;">
+      </td>
+      <td class="cell-right" style="font-weight:600;">${cant > 0 ? fmtMoney(total) : '—'}</td>
+      <td>${badgeAnalisis(p.Analisis_Compra)}</td>
+    </tr>`;
+  });
+
+  tbody.innerHTML = html;
+  recalcularTotales();
+  actualizarStats();
+  btnCrear.disabled = !hayProductosParaPedir();
+}
+
+// ============================================================
+// EVENTOS DE EDICIÓN
+// ============================================================
+function onCantidadChange(idx, input) {
+  const val = parseInt(input.value) || 0;
+  if (!modificaciones[idx]) modificaciones[idx] = {};
+  modificaciones[idx].cantidad = val;
+  input.classList.add('modified');
+
+  // Marcar fila como modificada
+  const row = input.closest('tr');
+  if (row) row.classList.add('row-modified');
+
+  recalcularTotales();
+  actualizarStats();
+  document.getElementById('btnCrearOC').disabled = !hayProductosParaPedir();
+}
+
+function onDescuentoChange(idx, input) {
+  let val = parseFloat(input.value) || 0;
+  if (val < 0) val = 0;
+  if (val > 100) val = 100;
+  input.value = val;
+  if (!modificaciones[idx]) modificaciones[idx] = {};
+  modificaciones[idx].descuento = val;
+  input.classList.add('modified');
+
+  recalcularTotales();
+}
+
+// ============================================================
+// CÁLCULOS
+// ============================================================
+function recalcularTotales() {
+  let subtotal = 0;
+  let descuentoTotal = 0;
+  let lineasConCantidad = 0;
+  let lineasModificadas = Object.keys(modificaciones).filter(k => 
+    modificaciones[k].cantidad !== undefined
+  ).length;
+
+  productosFiltrados.forEach((p, i) => {
+    const idx = productosOriginal.indexOf(p);
+    const mod = modificaciones[idx] || {};
+    const cantidad = mod.cantidad !== undefined ? mod.cantidad : (p.Sugerido > 0 ? p.Sugerido : 0);
+    const descPct = mod.descuento !== undefined ? mod.descuento : (p.Descuento_Compra || 0);
+    const costo = parseFloat(p.Costo_Unitario) || 0;
+    const cant = parseFloat(cantidad) || 0;
+
+    if (cant > 0) {
+      const sub = cant * costo;
+      const desc = sub * descPct / 100;
+      subtotal += sub;
+      descuentoTotal += desc;
+      lineasConCantidad++;
+    }
+  });
+
+  document.getElementById('totalSubtotal').textContent = fmtMoney(subtotal);
+  document.getElementById('totalDescuento').textContent = '-' + fmtMoney(descuentoTotal);
+  document.getElementById('totalGrand').textContent = fmtMoney(subtotal - descuentoTotal);
+  document.getElementById('footLineas').textContent = productosFiltrados.length;
+  document.getElementById('footConCantidad').textContent = lineasConCantidad;
+  document.getElementById('footModificadas').textContent = lineasModificadas;
+}
+
+function actualizarStats() {
+  document.getElementById('statTotal').textContent = productosFiltrados.length;
+  const conCantidad = productosFiltrados.filter((p, i) => {
+    const idx = productosOriginal.indexOf(p);
+    const mod = modificaciones[idx] || {};
+    const cant = mod.cantidad !== undefined ? mod.cantidad : (p.Sugerido > 0 ? p.Sugerido : 0);
+    return cant > 0;
+  }).length;
+  document.getElementById('statPedir').textContent = conCantidad;
+}
+
+function hayProductosParaPedir() {
+  return productosFiltrados.some((p, i) => {
+    const idx = productosOriginal.indexOf(p);
+    const mod = modificaciones[idx] || {};
+    const cant = mod.cantidad !== undefined ? mod.cantidad : (p.Sugerido > 0 ? p.Sugerido : 0);
+    return cant > 0;
+  });
+}
+
+// ============================================================
+// CREAR OC
+// ============================================================
+function confirmarCrearOC() {
+  const items = obtenerItemsParaOC();
+  if (items.length === 0) {
+    mostrarStatus('No hay productos con cantidad para pedir', 'error');
+    return;
+  }
+
+  document.getElementById('modalMessage').innerHTML = 
+    `Se creará una OC en <strong>borrador</strong> para <strong>${esc(proveedorActual)}</strong> con <strong>${items.length}</strong> productos.`;
+  document.getElementById('modalConfirm').classList.remove('hidden');
+}
+
+function cerrarModal() {
+  document.getElementById('modalConfirm').classList.add('hidden');
+}
+
+async function ejecutarCrearOC() {
+  cerrarModal();
+  const items = obtenerItemsParaOC();
+  
+  if (MODO_DEMO) {
+    mostrarStatus(`DEMO: Se crearían ${items.length} líneas para ${proveedorActual}`, 'success');
+    console.log('Items para OC:', items);
+    return;
+  }
+
+  mostrarStatus('Creando OC en borrador...', 'loading');
+  document.getElementById('btnCrearOC').disabled = true;
+  
+  try {
+    const resp = await fetch(ENDPOINTS.crearOC, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Accept': 'application/json'
+      },
+      body: JSON.stringify({
+        proveedor: proveedorActual,
+        items: items
+      })
+    });
+
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    if (data.status === 'success') {
+      mostrarStatus(`✅ OC ${data.po_number} creada exitosamente con ${data.productos_incluidos} productos`, 'success');
+      modificaciones = {};
+      renderTabla();
+    } else {
+      mostrarStatus(`Error: ${data.message || 'No se pudo crear la OC'}`, 'error');
+      document.getElementById('btnCrearOC').disabled = false;
+    }
+  } catch(e) {
+    mostrarStatus('Error al crear OC: ' + e.message, 'error');
+    document.getElementById('btnCrearOC').disabled = false;
+  }
+}
+
+function obtenerItemsParaOC() {
+  const items = [];
+  productosOriginal.forEach((p, idx) => {
+    const mod = modificaciones[idx] || {};
+    const cantidad = mod.cantidad !== undefined ? mod.cantidad : (p.Sugerido > 0 ? p.Sugerido : 0);
+    const descPct = mod.descuento !== undefined ? mod.descuento : (p.Descuento_Compra || 0);
+    
+    if (cantidad > 0) {
+      items.push({
+        descripcion: p.Descripcion,
+        sku: p.Codigo || '',
+        cantidad: cantidad,
+        descuento: descPct,
+        costo: parseFloat(p.Costo_Unitario) || 0
+      });
+    }
+  });
+  return items;
+}
+
+// ============================================================
+// ACCIONES
+// ============================================================
+function limpiarOC() {
+  document.getElementById('selProveedor').value = '';
+  document.getElementById('filtroEstado').value = '';
+  document.getElementById('filtroABC').value = '';
+  document.getElementById('filtroBuscar').value = '';
+  productosOriginal = [];
+  productosFiltrados = [];
+  modificaciones = {};
+  proveedorActual = '';
+  renderTabla();
+  ocultarStatus();
+}
+
+function exportarResumen() {
+  const items = obtenerItemsParaOC();
+  if (items.length === 0) {
+    mostrarStatus('No hay productos para exportar', 'error');
+    return;
+  }
+  // Copiar al clipboard como texto tabulado
+  let text = 'Descripción\tCantidad\tCosto\tDescuento%\tTotal\n';
+  items.forEach(it => {
+    const total = it.cantidad * it.costo * (1 - it.descuento/100);
+    text += `${it.descripcion}\t${it.cantidad}\t${it.costo}\t${it.descuento}\t${total.toFixed(2)}\n`;
+  });
+  
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(text).then(() => {
+      mostrarStatus(`${items.length} líneas copiadas al portapapeles`, 'success');
+    });
+  }
+}
+
+// ============================================================
+// UI HELPERS
+// ============================================================
+function mostrarStatus(msg, type) {
+  const bar = document.getElementById('statusBar');
+  const msgEl = document.getElementById('statusMessage');
+  bar.className = 'status-bar visible ' + (type || '');
+  msgEl.textContent = msg;
+  if (type === 'success') {
+    setTimeout(() => { bar.classList.remove('visible'); }, 4000);
+  }
+}
+function ocultarStatus() {
+  document.getElementById('statusBar').classList.remove('visible');
+}
+
+function mostrarLoading(show) {
+  const container = document.getElementById('tableContainer');
+  const existing = container.querySelector('.loading-overlay');
+  if (show && !existing) {
+    const overlay = document.createElement('div');
+    overlay.className = 'loading-overlay';
+    overlay.innerHTML = '<div class="spinner"></div>';
+    container.appendChild(overlay);
+  } else if (!show && existing) {
+    existing.remove();
+  }
+}
+
+function badgeEstado(estado) {
+  const cls = {
+    'NEGATIVO': 'badge-negativo',
+    'QUIEBRE': 'badge-quiebre',
+    'CRITICO': 'badge-critico',
+    'ALERTA': 'badge-alerta',
+    'PRE-ALERTA': 'badge-pre-alerta',
+    'NORMAL': 'badge-normal'
+  }[estado] || 'badge-normal';
+  return `<span class="badge ${cls}">${estado || '—'}</span>`;
+}
+
+function badgeABC(abc) {
+  if (!abc || abc === 'SIN CLASIFICACION') return '<span class="badge-abc" style="color:var(--text-muted);">—</span>';
+  const cls = abc.startsWith('A') ? 'abc-a' : abc === 'B' ? 'abc-b' : 'abc-c';
+  return `<span class="badge-abc ${cls}">${abc}</span>`;
+}
+
+function badgeAnalisis(analisis) {
+  const map = {
+    'URGENTE': 'analisis-urgente',
+    'PEDIR': 'analisis-pedir',
+    'AJUSTAR': 'analisis-ajustar',
+    'NO PEDIR': 'analisis-no-pedir',
+    'SOBRE STOCK': 'analisis-sobre-stock',
+    'SIN CONSUMO': 'analisis-sin-consumo'
+  };
+  const cls = map[analisis] || 'analisis-sin-consumo';
+  return `<span class="badge-analisis ${cls}">${analisis || '—'}</span>`;
+}
+
+// Formatters
+function fmtNum(n) {
+  const v = parseInt(n) || 0;
+  return v.toLocaleString('es-CR');
+}
+function fmtDec(n) {
+  const v = parseFloat(n);
+  if (isNaN(v) || v === 0) return '—';
+  return v.toLocaleString('es-CR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+}
+function fmtMoney(n) {
+  const v = parseFloat(n) || 0;
+  return '₡' + v.toLocaleString('es-CR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+}
+function esc(s) {
+  const d = document.createElement('div');
+  d.textContent = s;
+  return d.innerHTML;
+}
+
+// ============================================================
+// DATOS DEMO (para desarrollo fuera de Creator)
+// ============================================================
+function generarDatosDemo(proveedor) {
+  const productos = [
+    { Descripcion: 'DISPENSADOR PROMAX DE 1 ESTACION', Codigo: '1381-A', Estado: 'QUIEBRE', Rotacion: 'C', Stock_Sistema: 0, Venta_Semanal: 0.35, Alcance_Semanal: 0, Sugerido: 2, Costo_Unitario: 45000, Descuento_Compra: 0, Analisis_Compra: 'URGENTE' },
+    { Descripcion: 'DIVOSAN HYPOFOAM / BIDON 1X57KG', Codigo: '1381-B', Estado: 'ALERTA', Rotacion: 'A', Stock_Sistema: 3, Venta_Semanal: 2.24, Alcance_Semanal: 1.34, Sugerido: 5, Costo_Unitario: 83460, Descuento_Compra: 5, Analisis_Compra: 'PEDIR' },
+    { Descripcion: 'HD PLUSFOAM VF1 4X5L', Codigo: '1381-C', Estado: 'NORMAL', Rotacion: 'C', Stock_Sistema: 10, Venta_Semanal: 0, Alcance_Semanal: null, Sugerido: 0, Costo_Unitario: 12532, Descuento_Compra: 0, Analisis_Compra: 'SIN CONSUMO' },
+    { Descripcion: 'SUMA BREAK UP II 4X1 GAL', Codigo: '1381-D', Estado: 'NORMAL', Rotacion: 'A', Stock_Sistema: 8, Venta_Semanal: 1.4, Alcance_Semanal: 5.7, Sugerido: 0, Costo_Unitario: 27256, Descuento_Compra: 3, Analisis_Compra: 'NO PEDIR' },
+    { Descripcion: 'CLAX 200 24C1 20 LT', Codigo: '1381-E', Estado: 'CRITICO', Rotacion: 'B', Stock_Sistema: 1, Venta_Semanal: 0.7, Alcance_Semanal: 1.4, Sugerido: 4, Costo_Unitario: 52300, Descuento_Compra: 0, Analisis_Compra: 'PEDIR' },
+    { Descripcion: 'SURE WASH MATIC D10.1 20L', Codigo: '1381-F', Estado: 'QUIEBRE', Rotacion: 'A', Stock_Sistema: 0, Venta_Semanal: 1.05, Alcance_Semanal: 0, Sugerido: 8, Costo_Unitario: 38700, Descuento_Compra: 5, Analisis_Compra: 'URGENTE' },
+    { Descripcion: 'TASKI SANI CID R3.4 2X5LT', Codigo: '1381-G', Estado: 'NORMAL', Rotacion: 'B', Stock_Sistema: 6, Venta_Semanal: 0.49, Alcance_Semanal: 12.2, Sugerido: 0, Costo_Unitario: 31200, Descuento_Compra: 0, Analisis_Compra: 'SOBRE STOCK' },
+    { Descripcion: 'OXIVIR TB 4X3.78L', Codigo: '1381-H', Estado: 'ALERTA', Rotacion: 'B', Stock_Sistema: 2, Venta_Semanal: 0.56, Alcance_Semanal: 3.6, Sugerido: 3, Costo_Unitario: 28900, Descuento_Compra: 0, Analisis_Compra: 'PEDIR' },
+  ];
+  return productos;
+}
+</script>
+</body>
+</html>
