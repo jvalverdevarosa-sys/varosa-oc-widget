@@ -1049,6 +1049,7 @@ function obtenerItemsParaOC() {
       items.push({
         descripcion: p.Descripcion,
         sku: p.Codigo || '',
+        Item_ID: p.Item_ID || '',
         cantidad: cantidad,
         descuento: descPct,
         costo: parseFloat(p.Costo_Unitario) || 0
