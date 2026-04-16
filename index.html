@@ -805,7 +805,7 @@
 <script>
 // ============================================================
 // VAROSA - Widget OC para Zoho Creator (via n8n webhooks)
-// V4 - Stock editable + recálculo dinámico del Sugerido (fórmula V6)
+// V5 - Captura usuario + snapshot completo para auditoría
 // ============================================================
 
 // ===== CONFIGURACIÓN =====
@@ -816,6 +816,13 @@ const ENDPOINTS = {
   crearOC:     `${N8N_BASE}/webhook/oc-crear`,
 };
 
+// ===== CAPTURA DE USUARIO (desde URL parameter) =====
+// Creator inyecta el usuario logueado vía parámetro ?usuario=xxx
+// Ejemplo de URL embed en Creator:
+//   https://tu-widget.easypanel.host/?usuario=<%= zoho.loginuser %>
+const URL_PARAMS = new URLSearchParams(window.location.search);
+const USUARIO_ACTUAL = URL_PARAMS.get('usuario') || URL_PARAMS.get('user') || 'desconocido';
+
 // ===== PERMISOS =====
 // Flag para habilitar/deshabilitar edición de Stock.
 // Jeank lo controla según su lógica (URL param, email hardcoded, etc).
@@ -823,12 +830,11 @@ const ENDPOINTS = {
 // Para restringir, cambiar a false o implementar la lógica aquí:
 //
 //   Ejemplo 1 (URL param):
-//     const params = new URLSearchParams(window.location.search);
-//     let STOCK_EDITABLE = params.get('edit_stock') === 'true';
+//     let STOCK_EDITABLE = URL_PARAMS.get('edit_stock') === 'true';
 //
 //   Ejemplo 2 (emails autorizados):
 //     const USUARIOS_AUTORIZADOS = ['alberth@varosacr.com', 'jeank@varosacr.com'];
-//     let STOCK_EDITABLE = USUARIOS_AUTORIZADOS.includes(usuarioActual);
+//     let STOCK_EDITABLE = USUARIOS_AUTORIZADOS.includes(USUARIO_ACTUAL);
 //
 let STOCK_EDITABLE = true;
 
@@ -1573,10 +1579,14 @@ async function ejecutarCrearOC() {
   const items = obtenerItemsParaOC();
   const fechaEntrega = document.getElementById('inputFechaEntrega').value;
 
+  // Construir snapshot completo para auditoría
+  const snapshot = construirSnapshot();
+
   if (MODO_DEMO) {
     mostrarStatus(`DEMO: Se crearían ${items.length} líneas para ${proveedorActual} con entrega ${fechaEntrega}`, 'success');
     console.log('Items para OC:', items);
     console.log('Fecha entrega:', fechaEntrega);
+    console.log('Snapshot de auditoría:', snapshot);
     return;
   }
 
@@ -1593,7 +1603,9 @@ async function ejecutarCrearOC() {
       body: JSON.stringify({
         proveedor: proveedorActual,
         fecha_entrega: fechaEntrega,
-        items: items
+        usuario: USUARIO_ACTUAL,
+        items: items,
+        snapshot_auditoria: snapshot
       })
     });
 
@@ -1612,6 +1624,126 @@ async function ejecutarCrearOC() {
     mostrarStatus('Error al crear OC: ' + e.message, 'error');
     document.getElementById('btnCrearOC').disabled = false;
   }
+}
+
+// ============================================================
+// CONSTRUIR SNAPSHOT DE AUDITORÍA
+// Arma un objeto con TODA la información visible al momento de crear la OC:
+// - Metadatos (proveedor, fecha, usuario, filtros aplicados)
+// - Resumen (conteos y totales)
+// - Lista completa de productos visibles con todos sus valores
+//   incluyendo stock original y ajustado, sugerido backend y widget, modificaciones
+// ============================================================
+function construirSnapshot() {
+  const fechaEntrega = document.getElementById('inputFechaEntrega').value;
+
+  // Capturar filtros aplicados
+  const filtros = {
+    estado: document.getElementById('filtroEstado').value || '',
+    abc: document.getElementById('filtroABC').value || '',
+    analisis: document.getElementById('filtroAnalisis').value || '',
+    buscar: document.getElementById('filtroBuscar').value || ''
+  };
+
+  // Construir lista de productos con snapshot completo
+  const productosSnapshot = productosFiltrados.map((p) => {
+    const idx = productosOriginal.indexOf(p);
+    const mod = modificaciones[idx] || {};
+
+    const stockOriginal = parseFloat(p.Stock_Sistema) || 0;
+    const stockAjustado = (mod.stockAjustado !== undefined && mod.stockAjustado !== null)
+      ? parseFloat(mod.stockAjustado)
+      : null;
+    const stockUsado = stockAjustado !== null ? stockAjustado : stockOriginal;
+
+    const sugeridoBackend = parseFloat(p.Sugerido) || 0;
+    const sugeridoWidget = sugeridoEfectivo(p, idx);
+
+    const cantDefault = sugeridoWidget;
+    const cantidadFinal = mod.cantidad !== undefined ? mod.cantidad : cantDefault;
+
+    const descDefault = parseFloat(p.Descuento_Compra_Item) || parseFloat(p.Descuento_Compra) || 0;
+    const descPct = mod.descuento !== undefined ? mod.descuento : descDefault;
+
+    const costo = parseFloat(p.Costo_Unitario) || 0;
+    const cobertura = calcularCoberturaFinal(p, cantidadFinal, stockUsado);
+
+    const taxId = (p.Tax_ID || '').toString().trim();
+
+    return {
+      codigo: p.Codigo || '',
+      descripcion: p.Descripcion || '',
+      item_id: p.Item_ID || '',
+      tiene_tax_id: !!(taxId && taxId !== 'null'),
+      fue_pedido: cantidadFinal > 0,
+      // Clasificación
+      rotacion: p.Rotacion || '',
+      estado: p.Estado || '',
+      analisis_compra: p.Analisis_Compra || '',
+      // Stock e inventario
+      stock_sistema: stockOriginal,
+      stock_ajustado: stockAjustado,
+      stock_usado_en_calculo: stockUsado,
+      en_transito: parseFloat(p.En_Transito) || 0,
+      pendiente_ov: parseFloat(p.Pendiente_OV) || 0,
+      // Máximos
+      maximo_manual: parseFloat(p.Maximo_MANUAL) || 0,
+      maximo_calculado: parseFloat(p.Maximo_CALCULADO) || 0,
+      maximo_a_usar: parseFloat(p.Maximo_A_Usar) || 0,
+      // Consumo y alcance
+      consumo_diario: parseFloat(p.Consumo_Diario) || 0,
+      venta_semanal: parseFloat(p.Venta_Semanal) || 0,
+      alcance_semanal: parseFloat(p.Alcance_Semanal) || 0,
+      // Sugerido: lo que vino del backend vs lo que mostró el widget (redondeo o recalculo por stock ajustado)
+      sugerido_backend: sugeridoBackend,
+      sugerido_widget: sugeridoWidget,
+      sugerido_fue_recalculado: stockAjustado !== null,
+      // Cantidad final y modificaciones
+      cantidad_default: cantDefault,
+      cantidad_final: parseFloat(cantidadFinal) || 0,
+      cantidad_fue_modificada: mod.cantidad !== undefined,
+      // Descuento y costos
+      descuento_default: descDefault,
+      descuento_aplicado: descPct,
+      descuento_fue_modificado: mod.descuento !== undefined,
+      costo_unitario: costo,
+      embalaje: embalajeDe(p),
+      // Cobertura
+      cobertura_final_dias: cobertura.dias === Infinity ? null : Math.round(cobertura.dias)
+    };
+  });
+
+  // Calcular contadores del resumen
+  const pedidos = productosSnapshot.filter(x => x.fue_pedido);
+  const modificados = productosSnapshot.filter(x => x.cantidad_fue_modificada || x.descuento_fue_modificado);
+  const stocksAjustados = productosSnapshot.filter(x => x.stock_ajustado !== null);
+
+  // Sumas monetarias
+  let subtotal = 0, descuentoTotal = 0;
+  pedidos.forEach(x => {
+    const sub = x.cantidad_final * x.costo_unitario;
+    subtotal += sub;
+    descuentoTotal += sub * x.descuento_aplicado / 100;
+  });
+
+  return {
+    version: 'widget-v5',
+    timestamp_iso: new Date().toISOString(),
+    proveedor: proveedorActual,
+    fecha_entrega: fechaEntrega,
+    usuario: USUARIO_ACTUAL,
+    filtros: filtros,
+    resumen: {
+      productos_visibles: productosSnapshot.length,
+      productos_pedidos: pedidos.length,
+      productos_modificados: modificados.length,
+      stocks_ajustados: stocksAjustados.length,
+      subtotal_crc: Math.round(subtotal),
+      descuento_crc: Math.round(descuentoTotal),
+      total_crc: Math.round(subtotal - descuentoTotal)
+    },
+    productos: productosSnapshot
+  };
 }
 
 function obtenerItemsParaOC() {
