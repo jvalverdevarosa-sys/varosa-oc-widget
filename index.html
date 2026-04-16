@@ -40,7 +40,7 @@
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  
+
   body {
     font-family: var(--font-body);
     background: var(--bg-main);
@@ -146,10 +146,21 @@
     border-color: var(--border-focus);
     box-shadow: 0 0 0 3px rgba(21,201,228,0.1);
   }
-  .filter-group .select-proveedor { width: 320px; }
-  .filter-group .select-estado { width: 140px; }
-  .filter-group .select-abc { width: 120px; }
-  .filter-group .input-buscar { width: 220px; }
+  .filter-group .select-proveedor { width: 280px; }
+  .filter-group .input-fecha { width: 150px; }
+  .filter-group .select-estado { width: 130px; }
+  .filter-group .select-abc { width: 110px; }
+  .filter-group .input-buscar { width: 200px; }
+
+  /* Campo fecha destacado */
+  .filter-group .input-fecha {
+    border-color: var(--varosa-cyan);
+    background: #f0fdff;
+  }
+  .filter-group label.label-required::after {
+    content: ' *';
+    color: var(--estado-negativo);
+  }
 
   .filter-stats {
     margin-left: auto;
@@ -243,6 +254,7 @@
   .w-alcance { width: 70px; }
   .w-sugerido { width: 75px; }
   .w-cantidad { width: 80px; }
+  .w-emb { width: 55px; }
   .w-costo { width: 85px; }
   .w-desc-pct { width: 60px; }
   .w-total { width: 95px; }
@@ -258,6 +270,12 @@
   tbody tr.row-selected {
     outline: 2px solid var(--varosa-cyan);
     outline-offset: -2px;
+  }
+  tbody tr.row-sin-impuesto {
+    background: #fef2f2 !important;
+  }
+  tbody tr.row-sin-impuesto td {
+    color: #991b1b;
   }
 
   tbody td {
@@ -284,6 +302,14 @@
     word-break: break-word;
     line-height: 1.3;
     max-width: 280px;
+  }
+
+  .no-tax-icon {
+    display: inline-block;
+    color: #dc2626;
+    font-weight: bold;
+    margin-left: 4px;
+    cursor: help;
   }
 
   /* Editable cells */
@@ -334,9 +360,9 @@
   .badge-pre-alerta { background: #f7fee7; color: var(--estado-prealerta); }
   .badge-normal { background: #f0fdf4; color: var(--estado-normal); }
 
-  .badge-abc { 
+  .badge-abc {
     font-family: var(--font-mono);
-    font-weight: 700; 
+    font-weight: 700;
     font-size: 11px;
   }
   .abc-a { color: var(--estado-negativo); }
@@ -456,8 +482,10 @@
     border-radius: 12px;
     box-shadow: var(--shadow-lg);
     padding: 24px;
-    max-width: 480px;
+    max-width: 520px;
     width: 90%;
+    max-height: 80vh;
+    overflow-y: auto;
   }
   .modal h3 {
     font-size: 16px;
@@ -469,6 +497,20 @@
     color: var(--text-secondary);
     margin-bottom: 20px;
     line-height: 1.5;
+  }
+  .modal ul.no-tax-list {
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: 6px;
+    padding: 12px 12px 12px 32px;
+    margin-bottom: 20px;
+    max-height: 240px;
+    overflow-y: auto;
+    font-size: 12px;
+    color: #991b1b;
+  }
+  .modal ul.no-tax-list li {
+    margin-bottom: 4px;
   }
   .modal-actions {
     display: flex;
@@ -551,6 +593,10 @@
         </select>
       </div>
       <div class="filter-group">
+        <label class="label-required">Fecha de Entrega</label>
+        <input type="date" id="inputFechaEntrega" class="input-fecha">
+      </div>
+      <div class="filter-group">
         <label>Estado</label>
         <select id="filtroEstado" class="select-estado" onchange="aplicarFiltros()">
           <option value="">Todos</option>
@@ -597,8 +643,9 @@
             <th class="w-stock col-right" data-tooltip="Stock actual en sistema">Stock</th>
             <th class="w-venta col-right" data-tooltip="Venta semanal promedio">Vta/Sem</th>
             <th class="w-alcance col-right" data-tooltip="Semanas de alcance con stock actual">Alcance</th>
-            <th class="w-sugerido col-right" data-tooltip="Cantidad sugerida por el sistema">Sugerido</th>
-            <th class="w-cantidad col-right col-editable" data-tooltip="Cantidad a pedir (editable)">Cantidad</th>
+            <th class="w-sugerido col-right" data-tooltip="Cantidad sugerida (redondeada al embalaje)">Sugerido</th>
+            <th class="w-cantidad col-right col-editable" data-tooltip="Cantidad a pedir (se ajusta al embalaje)">Cantidad</th>
+            <th class="w-emb col-right" data-tooltip="Embalaje mínimo">Embal.</th>
             <th class="w-costo col-right">Costo Unit.</th>
             <th class="w-desc-pct col-right col-editable" data-tooltip="% descuento de compra">%Desc</th>
             <th class="w-total col-right">Total</th>
@@ -623,6 +670,7 @@
         <span>Líneas: <strong id="footLineas">0</strong></span>
         <span>Con cantidad: <strong id="footConCantidad">0</strong></span>
         <span>Modificadas: <strong id="footModificadas">0</strong></span>
+        <span>Sin impuesto: <strong id="footSinImpuesto" style="color:#dc2626;">0</strong></span>
       </div>
       <div class="footer-totals">
         <div class="total-item">
@@ -645,11 +693,12 @@
 <!-- MODAL CONFIRMAR OC -->
 <div class="modal-backdrop hidden" id="modalConfirm">
   <div class="modal">
-    <h3>Confirmar creación de OC</h3>
+    <h3 id="modalTitle">Confirmar creación de OC</h3>
     <p id="modalMessage">Se creará una Orden de Compra en borrador...</p>
-    <div class="modal-actions">
+    <div id="modalExtraContent"></div>
+    <div class="modal-actions" id="modalActions">
       <button onclick="cerrarModal()">Cancelar</button>
-      <button class="btn-confirm" onclick="ejecutarCrearOC()">Sí, crear OC</button>
+      <button class="btn-confirm" id="btnConfirmOC" onclick="ejecutarCrearOC()">Sí, crear OC</button>
     </div>
   </div>
 </div>
@@ -657,13 +706,10 @@
 <script>
 // ============================================================
 // VAROSA - Widget OC para Zoho Creator (via n8n webhooks)
-// ============================================================
-// Comunicación: Widget HTML (Easypanel) → n8n webhooks → Zoho
-// Patrón consistente con dashboard de ventas y otros widgets.
+// V2 - Con embalaje, fecha de entrega, impuestos y descuentos reales
 // ============================================================
 
 // ===== CONFIGURACIÓN =====
-// Cambiar esta URL base al dominio real de n8n en Easypanel
 const N8N_BASE = 'https://n8n-n8n.1efluw.easypanel.host';
 const ENDPOINTS = {
   proveedores: `${N8N_BASE}/webhook/oc-proveedores`,
@@ -675,15 +721,43 @@ const ENDPOINTS = {
 let MODO_DEMO = false;
 
 // Estado global
-let productosOriginal = [];   // Datos sin filtrar del proveedor actual
-let productosFiltrados = [];  // Datos filtrados visibles
+let productosOriginal = [];
+let productosFiltrados = [];
 let proveedorActual = '';
-let modificaciones = {};       // { index: { cantidad: X, descuento: Y } }
+let modificaciones = {};
+
+// ============================================================
+// HELPERS DE EMBALAJE (redondeo hacia arriba al múltiplo)
+// ============================================================
+function embalajeDe(producto) {
+  // Prioriza Embalaje_Item (nueva columna V5 de Artículos), fallback a Embalaje (legado)
+  const emb = parseInt(producto.Embalaje_Item) || parseInt(producto.Embalaje) || 1;
+  return emb >= 1 ? emb : 1;
+}
+
+function redondearAEmbalaje(cantidad, embalaje) {
+  const c = parseFloat(cantidad) || 0;
+  const e = parseInt(embalaje) || 1;
+  if (c <= 0) return 0;
+  if (e <= 1) return Math.ceil(c);
+  // Redondeo hacia arriba al múltiplo del embalaje
+  return Math.ceil(c / e) * e;
+}
+
+function sugeridoRedondeado(producto) {
+  const sug = parseFloat(producto.Sugerido) || 0;
+  if (sug <= 0) return 0;
+  return redondearAEmbalaje(sug, embalajeDe(producto));
+}
 
 // ============================================================
 // INICIALIZACIÓN
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
+  // Fecha de entrega por defecto: vacía (el comprador la llena)
+  // Si quisieras valor default, descomentar:
+  // document.getElementById('inputFechaEntrega').value = new Date().toISOString().split('T')[0];
+
   cargarProveedores();
 });
 
@@ -695,11 +769,11 @@ async function cargarProveedores() {
   mostrarStatus('Cargando proveedores...', 'loading');
 
   try {
-    const resp = await fetch(ENDPOINTS.proveedores, { 
+    const resp = await fetch(ENDPOINTS.proveedores, {
       method: 'GET',
       headers: { 'Accept': 'application/json' }
     });
-    
+
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
 
@@ -842,12 +916,19 @@ function renderTabla() {
 
   let html = '';
   productosFiltrados.forEach((p, i) => {
-    const idx = productosOriginal.indexOf(p); // index real para modificaciones
+    const idx = productosOriginal.indexOf(p);
     const mod = modificaciones[idx] || {};
     const isModified = mod.cantidad !== undefined || mod.descuento !== undefined;
+    const emb = embalajeDe(p);
 
-    const cantidad = mod.cantidad !== undefined ? mod.cantidad : (p.Sugerido > 0 ? p.Sugerido : '');
-    const descPct = mod.descuento !== undefined ? mod.descuento : (p.Descuento_Compra || 0);
+    // Cantidad por defecto = Sugerido REDONDEADO al embalaje
+    const cantidadDefault = sugeridoRedondeado(p);
+    const cantidad = mod.cantidad !== undefined ? mod.cantidad : (cantidadDefault > 0 ? cantidadDefault : '');
+
+    // Descuento por defecto: del producto (nueva columna Descuento_Compra_Item)
+    const descDefault = parseFloat(p.Descuento_Compra_Item) || parseFloat(p.Descuento_Compra) || 0;
+    const descPct = mod.descuento !== undefined ? mod.descuento : descDefault;
+
     const costo = parseFloat(p.Costo_Unitario) || 0;
     const cant = parseFloat(cantidad) || 0;
     const desc = parseFloat(descPct) || 0;
@@ -855,22 +936,35 @@ function renderTabla() {
     const descMonto = subtotal * desc / 100;
     const total = subtotal - descMonto;
 
-    html += `<tr class="${isModified ? 'row-modified' : ''}" data-idx="${idx}">
+    // Flag: producto sin Tax_ID = ERROR (no se puede crear OC con él)
+    const taxId = (p.Tax_ID || '').toString().trim();
+    const sinImpuesto = !taxId || taxId === 'null';
+    const sinImpuestoClass = (sinImpuesto && cant > 0) ? 'row-sin-impuesto' : '';
+    const taxWarning = sinImpuesto
+      ? '<span class="no-tax-icon" title="Sin impuesto configurado — corrija en Zoho Inventory">⚠</span>'
+      : '';
+
+    // Sugerido: mostrar redondeado o "—"
+    const sugeridoMostrar = cantidadDefault > 0 ? fmtNum(cantidadDefault) : '—';
+
+    html += `<tr class="${isModified ? 'row-modified' : ''} ${sinImpuestoClass}" data-idx="${idx}">
       <td class="cell-num">${i + 1}</td>
       <td>${badgeEstado(p.Estado)}</td>
       <td class="cell-num">${badgeABC(p.Rotacion)}</td>
       <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);">${esc(p.Codigo || '')}</td>
-      <td class="cell-desc" title="${esc(p.Descripcion)}">${esc(p.Descripcion)}</td>
+      <td class="cell-desc" title="${esc(p.Descripcion)}">${esc(p.Descripcion)}${taxWarning}</td>
       <td class="cell-right">${fmtNum(p.Stock_Sistema)}</td>
       <td class="cell-right">${fmtDec(p.Venta_Semanal)}</td>
       <td class="cell-right">${fmtDec(p.Alcance_Semanal)}</td>
-      <td class="cell-right" style="color:var(--varosa-blue);font-weight:500;">${p.Sugerido > 0 ? fmtNum(p.Sugerido) : '—'}</td>
+      <td class="cell-right" style="color:var(--varosa-blue);font-weight:500;">${sugeridoMostrar}</td>
       <td class="cell-editable">
         <input type="number" value="${cantidad}" min="0" step="1"
           class="${isModified && mod.cantidad !== undefined ? 'modified' : ''}"
           onchange="onCantidadChange(${idx}, this)"
+          onblur="onCantidadBlur(${idx}, this)"
           onfocus="this.select()">
       </td>
+      <td class="cell-right" style="color:var(--text-muted);font-size:11px;">${emb}</td>
       <td class="cell-right">${fmtMoney(costo)}</td>
       <td class="cell-editable">
         <input type="number" value="${descPct}" min="0" max="100" step="0.5"
@@ -894,18 +988,49 @@ function renderTabla() {
 // EVENTOS DE EDICIÓN
 // ============================================================
 function onCantidadChange(idx, input) {
+  // onchange dispara cuando se confirma un cambio (tecla Enter o perder foco)
+  // El ajuste real se hace en onBlur para evitar saltos mientras se escribe
   const val = parseInt(input.value) || 0;
   if (!modificaciones[idx]) modificaciones[idx] = {};
   modificaciones[idx].cantidad = val;
   input.classList.add('modified');
 
-  // Marcar fila como modificada
   const row = input.closest('tr');
   if (row) row.classList.add('row-modified');
 
   recalcularTotales();
   actualizarStats();
   document.getElementById('btnCrearOC').disabled = !hayProductosParaPedir();
+}
+
+function onCantidadBlur(idx, input) {
+  // Al perder foco: ajusta al múltiplo del embalaje (Opción 1 — automático)
+  const producto = productosOriginal[idx];
+  if (!producto) return;
+
+  const emb = embalajeDe(producto);
+  const valActual = parseInt(input.value) || 0;
+
+  if (valActual <= 0) {
+    input.value = 0;
+    if (!modificaciones[idx]) modificaciones[idx] = {};
+    modificaciones[idx].cantidad = 0;
+    recalcularTotales();
+    actualizarStats();
+    document.getElementById('btnCrearOC').disabled = !hayProductosParaPedir();
+    return;
+  }
+
+  const ajustado = redondearAEmbalaje(valActual, emb);
+  if (ajustado !== valActual) {
+    input.value = ajustado;
+    if (!modificaciones[idx]) modificaciones[idx] = {};
+    modificaciones[idx].cantidad = ajustado;
+    input.classList.add('modified');
+    recalcularTotales();
+    actualizarStats();
+    document.getElementById('btnCrearOC').disabled = !hayProductosParaPedir();
+  }
 }
 
 function onDescuentoChange(idx, input) {
@@ -927,15 +1052,18 @@ function recalcularTotales() {
   let subtotal = 0;
   let descuentoTotal = 0;
   let lineasConCantidad = 0;
-  let lineasModificadas = Object.keys(modificaciones).filter(k => 
+  let lineasSinImpuesto = 0;
+  let lineasModificadas = Object.keys(modificaciones).filter(k =>
     modificaciones[k].cantidad !== undefined
   ).length;
 
   productosFiltrados.forEach((p, i) => {
     const idx = productosOriginal.indexOf(p);
     const mod = modificaciones[idx] || {};
-    const cantidad = mod.cantidad !== undefined ? mod.cantidad : (p.Sugerido > 0 ? p.Sugerido : 0);
-    const descPct = mod.descuento !== undefined ? mod.descuento : (p.Descuento_Compra || 0);
+    const cantDefault = sugeridoRedondeado(p);
+    const cantidad = mod.cantidad !== undefined ? mod.cantidad : cantDefault;
+    const descDefault = parseFloat(p.Descuento_Compra_Item) || parseFloat(p.Descuento_Compra) || 0;
+    const descPct = mod.descuento !== undefined ? mod.descuento : descDefault;
     const costo = parseFloat(p.Costo_Unitario) || 0;
     const cant = parseFloat(cantidad) || 0;
 
@@ -945,6 +1073,10 @@ function recalcularTotales() {
       subtotal += sub;
       descuentoTotal += desc;
       lineasConCantidad++;
+
+      // Contar sin impuesto (solo si tiene cantidad)
+      const taxId = (p.Tax_ID || '').toString().trim();
+      if (!taxId || taxId === 'null') lineasSinImpuesto++;
     }
   });
 
@@ -954,24 +1086,27 @@ function recalcularTotales() {
   document.getElementById('footLineas').textContent = productosFiltrados.length;
   document.getElementById('footConCantidad').textContent = lineasConCantidad;
   document.getElementById('footModificadas').textContent = lineasModificadas;
+  document.getElementById('footSinImpuesto').textContent = lineasSinImpuesto;
 }
 
 function actualizarStats() {
   document.getElementById('statTotal').textContent = productosFiltrados.length;
-  const conCantidad = productosFiltrados.filter((p, i) => {
+  const conCantidad = productosFiltrados.filter((p) => {
     const idx = productosOriginal.indexOf(p);
     const mod = modificaciones[idx] || {};
-    const cant = mod.cantidad !== undefined ? mod.cantidad : (p.Sugerido > 0 ? p.Sugerido : 0);
+    const cantDefault = sugeridoRedondeado(p);
+    const cant = mod.cantidad !== undefined ? mod.cantidad : cantDefault;
     return cant > 0;
   }).length;
   document.getElementById('statPedir').textContent = conCantidad;
 }
 
 function hayProductosParaPedir() {
-  return productosFiltrados.some((p, i) => {
+  return productosFiltrados.some((p) => {
     const idx = productosOriginal.indexOf(p);
     const mod = modificaciones[idx] || {};
-    const cant = mod.cantidad !== undefined ? mod.cantidad : (p.Sugerido > 0 ? p.Sugerido : 0);
+    const cantDefault = sugeridoRedondeado(p);
+    const cant = mod.cantidad !== undefined ? mod.cantidad : cantDefault;
     return cant > 0;
   });
 }
@@ -981,13 +1116,55 @@ function hayProductosParaPedir() {
 // ============================================================
 function confirmarCrearOC() {
   const items = obtenerItemsParaOC();
+  const modalMsg = document.getElementById('modalMessage');
+  const modalTitle = document.getElementById('modalTitle');
+  const modalExtra = document.getElementById('modalExtraContent');
+  const modalActions = document.getElementById('modalActions');
+  const btnConfirm = document.getElementById('btnConfirmOC');
+
+  modalExtra.innerHTML = '';
+
   if (items.length === 0) {
     mostrarStatus('No hay productos con cantidad para pedir', 'error');
     return;
   }
 
-  document.getElementById('modalMessage').innerHTML = 
-    `Se creará una OC en <strong>borrador</strong> para <strong>${esc(proveedorActual)}</strong> con <strong>${items.length}</strong> productos.`;
+  // 1) Validar fecha de entrega
+  const fechaEntrega = document.getElementById('inputFechaEntrega').value;
+  if (!fechaEntrega) {
+    modalTitle.textContent = '⚠️ Fecha de entrega requerida';
+    modalMsg.innerHTML = 'Debe ingresar la <strong>fecha de entrega</strong> de la OC antes de continuar.';
+    btnConfirm.style.display = 'none';
+    document.getElementById('modalConfirm').classList.remove('hidden');
+    return;
+  }
+
+  // 2) Validar que todos los items con cantidad tengan Tax_ID
+  const sinImpuesto = items.filter(it => !it.Tax_ID || it.Tax_ID === 'null');
+  if (sinImpuesto.length > 0) {
+    modalTitle.textContent = '🚫 Productos sin impuesto configurado';
+    modalMsg.innerHTML = `Los siguientes <strong>${sinImpuesto.length}</strong> productos no tienen impuesto de compra configurado en Zoho Inventory. Corríjalos antes de continuar:`;
+
+    let listHtml = '<ul class="no-tax-list">';
+    sinImpuesto.forEach(it => {
+      listHtml += `<li><strong>${esc(it.sku)}</strong> — ${esc(it.descripcion)}</li>`;
+    });
+    listHtml += '</ul>';
+    listHtml += '<p style="font-size:12px;color:var(--text-secondary);">Abra cada producto en Zoho Inventory → pestaña "General" → campo "Impuesto de compra" → seleccione el impuesto correspondiente. Luego recargue esta ventana.</p>';
+    modalExtra.innerHTML = listHtml;
+
+    btnConfirm.style.display = 'none';
+    document.getElementById('modalConfirm').classList.remove('hidden');
+    return;
+  }
+
+  // 3) Todo OK: mostrar confirmación normal
+  modalTitle.textContent = 'Confirmar creación de OC';
+  btnConfirm.style.display = '';
+  modalMsg.innerHTML =
+    `Se creará una OC en <strong>borrador</strong> para <strong>${esc(proveedorActual)}</strong> con <strong>${items.length}</strong> productos.<br>
+    <span style="font-size:12px;color:var(--text-secondary);">Fecha de entrega: <strong>${esc(fechaEntrega)}</strong></span>`;
+
   document.getElementById('modalConfirm').classList.remove('hidden');
 }
 
@@ -998,25 +1175,28 @@ function cerrarModal() {
 async function ejecutarCrearOC() {
   cerrarModal();
   const items = obtenerItemsParaOC();
-  
+  const fechaEntrega = document.getElementById('inputFechaEntrega').value;
+
   if (MODO_DEMO) {
-    mostrarStatus(`DEMO: Se crearían ${items.length} líneas para ${proveedorActual}`, 'success');
+    mostrarStatus(`DEMO: Se crearían ${items.length} líneas para ${proveedorActual} con entrega ${fechaEntrega}`, 'success');
     console.log('Items para OC:', items);
+    console.log('Fecha entrega:', fechaEntrega);
     return;
   }
 
   mostrarStatus('Creando OC en borrador...', 'loading');
   document.getElementById('btnCrearOC').disabled = true;
-  
+
   try {
     const resp = await fetch(ENDPOINTS.crearOC, {
       method: 'POST',
-      headers: { 
+      headers: {
         'Content-Type': 'application/json',
         'Accept': 'application/json'
       },
       body: JSON.stringify({
         proveedor: proveedorActual,
+        fecha_entrega: fechaEntrega,
         items: items
       })
     });
@@ -1042,17 +1222,21 @@ function obtenerItemsParaOC() {
   const items = [];
   productosOriginal.forEach((p, idx) => {
     const mod = modificaciones[idx] || {};
-    const cantidad = mod.cantidad !== undefined ? mod.cantidad : (p.Sugerido > 0 ? p.Sugerido : 0);
-    const descPct = mod.descuento !== undefined ? mod.descuento : (p.Descuento_Compra || 0);
-    
+    const cantDefault = sugeridoRedondeado(p);
+    const cantidad = mod.cantidad !== undefined ? mod.cantidad : cantDefault;
+    const descDefault = parseFloat(p.Descuento_Compra_Item) || parseFloat(p.Descuento_Compra) || 0;
+    const descPct = mod.descuento !== undefined ? mod.descuento : descDefault;
+
     if (cantidad > 0) {
       items.push({
         descripcion: p.Descripcion,
         sku: p.Codigo || '',
         Item_ID: p.Item_ID || '',
-        cantidad: cantidad,
+        Tax_ID: (p.Tax_ID || '').toString().trim(),
+        cantidad: parseInt(cantidad) || 0,
         descuento: descPct,
-        costo: parseFloat(p.Costo_Unitario) || 0
+        costo: parseFloat(p.Costo_Unitario) || 0,
+        embalaje: embalajeDe(p)
       });
     }
   });
@@ -1064,6 +1248,7 @@ function obtenerItemsParaOC() {
 // ============================================================
 function limpiarOC() {
   document.getElementById('selProveedor').value = '';
+  document.getElementById('inputFechaEntrega').value = '';
   document.getElementById('filtroEstado').value = '';
   document.getElementById('filtroABC').value = '';
   document.getElementById('filtroBuscar').value = '';
@@ -1081,13 +1266,12 @@ function exportarResumen() {
     mostrarStatus('No hay productos para exportar', 'error');
     return;
   }
-  // Copiar al clipboard como texto tabulado
-  let text = 'Descripción\tCantidad\tCosto\tDescuento%\tTotal\n';
+  let text = 'Descripción\tSKU\tCantidad\tCosto\tDescuento%\tTotal\n';
   items.forEach(it => {
     const total = it.cantidad * it.costo * (1 - it.descuento/100);
-    text += `${it.descripcion}\t${it.cantidad}\t${it.costo}\t${it.descuento}\t${total.toFixed(2)}\n`;
+    text += `${it.descripcion}\t${it.sku}\t${it.cantidad}\t${it.costo}\t${it.descuento}\t${total.toFixed(2)}\n`;
   });
-  
+
   if (navigator.clipboard) {
     navigator.clipboard.writeText(text).then(() => {
       mostrarStatus(`${items.length} líneas copiadas al portapapeles`, 'success');
@@ -1180,14 +1364,14 @@ function esc(s) {
 // ============================================================
 function generarDatosDemo(proveedor) {
   const productos = [
-    { Descripcion: 'DISPENSADOR PROMAX DE 1 ESTACION', Codigo: '1381-A', Estado: 'QUIEBRE', Rotacion: 'C', Stock_Sistema: 0, Venta_Semanal: 0.35, Alcance_Semanal: 0, Sugerido: 2, Costo_Unitario: 45000, Descuento_Compra: 0, Analisis_Compra: 'URGENTE' },
-    { Descripcion: 'DIVOSAN HYPOFOAM / BIDON 1X57KG', Codigo: '1381-B', Estado: 'ALERTA', Rotacion: 'A', Stock_Sistema: 3, Venta_Semanal: 2.24, Alcance_Semanal: 1.34, Sugerido: 5, Costo_Unitario: 83460, Descuento_Compra: 5, Analisis_Compra: 'PEDIR' },
-    { Descripcion: 'HD PLUSFOAM VF1 4X5L', Codigo: '1381-C', Estado: 'NORMAL', Rotacion: 'C', Stock_Sistema: 10, Venta_Semanal: 0, Alcance_Semanal: null, Sugerido: 0, Costo_Unitario: 12532, Descuento_Compra: 0, Analisis_Compra: 'SIN CONSUMO' },
-    { Descripcion: 'SUMA BREAK UP II 4X1 GAL', Codigo: '1381-D', Estado: 'NORMAL', Rotacion: 'A', Stock_Sistema: 8, Venta_Semanal: 1.4, Alcance_Semanal: 5.7, Sugerido: 0, Costo_Unitario: 27256, Descuento_Compra: 3, Analisis_Compra: 'NO PEDIR' },
-    { Descripcion: 'CLAX 200 24C1 20 LT', Codigo: '1381-E', Estado: 'CRITICO', Rotacion: 'B', Stock_Sistema: 1, Venta_Semanal: 0.7, Alcance_Semanal: 1.4, Sugerido: 4, Costo_Unitario: 52300, Descuento_Compra: 0, Analisis_Compra: 'PEDIR' },
-    { Descripcion: 'SURE WASH MATIC D10.1 20L', Codigo: '1381-F', Estado: 'QUIEBRE', Rotacion: 'A', Stock_Sistema: 0, Venta_Semanal: 1.05, Alcance_Semanal: 0, Sugerido: 8, Costo_Unitario: 38700, Descuento_Compra: 5, Analisis_Compra: 'URGENTE' },
-    { Descripcion: 'TASKI SANI CID R3.4 2X5LT', Codigo: '1381-G', Estado: 'NORMAL', Rotacion: 'B', Stock_Sistema: 6, Venta_Semanal: 0.49, Alcance_Semanal: 12.2, Sugerido: 0, Costo_Unitario: 31200, Descuento_Compra: 0, Analisis_Compra: 'SOBRE STOCK' },
-    { Descripcion: 'OXIVIR TB 4X3.78L', Codigo: '1381-H', Estado: 'ALERTA', Rotacion: 'B', Stock_Sistema: 2, Venta_Semanal: 0.56, Alcance_Semanal: 3.6, Sugerido: 3, Costo_Unitario: 28900, Descuento_Compra: 0, Analisis_Compra: 'PEDIR' },
+    { Descripcion: 'DISPENSADOR PROMAX DE 1 ESTACION', Codigo: '1381-A', Item_ID: 'IT001', Tax_ID: '6074712000000106063', Estado: 'QUIEBRE', Rotacion: 'C', Stock_Sistema: 0, Venta_Semanal: 0.35, Alcance_Semanal: 0, Sugerido: 2, Costo_Unitario: 45000, Descuento_Compra_Item: 0, Embalaje_Item: 1, Analisis_Compra: 'URGENTE' },
+    { Descripcion: 'DIVOSAN HYPOFOAM / BIDON 1X57KG', Codigo: '1381-B', Item_ID: 'IT002', Tax_ID: '6074712000000106063', Estado: 'ALERTA', Rotacion: 'A', Stock_Sistema: 3, Venta_Semanal: 2.24, Alcance_Semanal: 1.34, Sugerido: 5, Costo_Unitario: 83460, Descuento_Compra_Item: 5, Embalaje_Item: 1, Analisis_Compra: 'PEDIR' },
+    { Descripcion: 'HD PLUSFOAM VF1 4X5L', Codigo: '1381-C', Item_ID: 'IT003', Tax_ID: '6074712000000106063', Estado: 'NORMAL', Rotacion: 'C', Stock_Sistema: 10, Venta_Semanal: 0, Alcance_Semanal: null, Sugerido: 0, Costo_Unitario: 12532, Descuento_Compra_Item: 0, Embalaje_Item: 4, Analisis_Compra: 'SIN CONSUMO' },
+    { Descripcion: 'SUMA BREAK UP II 4X1 GAL', Codigo: '1381-D', Item_ID: 'IT004', Tax_ID: '6074712000000106063', Estado: 'NORMAL', Rotacion: 'A', Stock_Sistema: 8, Venta_Semanal: 1.4, Alcance_Semanal: 5.7, Sugerido: 0, Costo_Unitario: 27256, Descuento_Compra_Item: 3, Embalaje_Item: 4, Analisis_Compra: 'NO PEDIR' },
+    { Descripcion: 'CLAX 200 24C1 20 LT', Codigo: '1381-E', Item_ID: 'IT005', Tax_ID: '6074712000000106063', Estado: 'CRITICO', Rotacion: 'B', Stock_Sistema: 1, Venta_Semanal: 0.7, Alcance_Semanal: 1.4, Sugerido: 4, Costo_Unitario: 52300, Descuento_Compra_Item: 0, Embalaje_Item: 1, Analisis_Compra: 'PEDIR' },
+    { Descripcion: 'SURE WASH MATIC D10.1 20L (EJEMPLO SIN IMPUESTO)', Codigo: '1381-F', Item_ID: 'IT006', Tax_ID: '', Estado: 'QUIEBRE', Rotacion: 'A', Stock_Sistema: 0, Venta_Semanal: 1.05, Alcance_Semanal: 0, Sugerido: 8, Costo_Unitario: 38700, Descuento_Compra_Item: 5, Embalaje_Item: 6, Analisis_Compra: 'URGENTE' },
+    { Descripcion: 'TASKI SANI CID R3.4 2X5LT', Codigo: '1381-G', Item_ID: 'IT007', Tax_ID: '6074712000000106063', Estado: 'NORMAL', Rotacion: 'B', Stock_Sistema: 6, Venta_Semanal: 0.49, Alcance_Semanal: 12.2, Sugerido: 0, Costo_Unitario: 31200, Descuento_Compra_Item: 0, Embalaje_Item: 2, Analisis_Compra: 'SOBRE STOCK' },
+    { Descripcion: 'OXIVIR TB 4X3.78L (ejemplo decimal)', Codigo: '1381-H', Item_ID: 'IT008', Tax_ID: '6074712000000106063', Estado: 'ALERTA', Rotacion: 'B', Stock_Sistema: 2, Venta_Semanal: 0.56, Alcance_Semanal: 3.6, Sugerido: 3.7, Costo_Unitario: 28900, Descuento_Compra_Item: 10, Embalaje_Item: 4, Analisis_Compra: 'PEDIR' },
   ];
   return productos;
 }
