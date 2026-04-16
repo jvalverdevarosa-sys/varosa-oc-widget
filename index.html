@@ -150,6 +150,7 @@
   .filter-group .input-fecha { width: 150px; }
   .filter-group .select-estado { width: 130px; }
   .filter-group .select-abc { width: 110px; }
+  .filter-group .select-analisis { width: 130px; }
   .filter-group .input-buscar { width: 200px; }
 
   /* Campo fecha destacado */
@@ -243,22 +244,30 @@
     opacity: 0.5;
   }
 
+  /* Grupos de columnas: color de fondo distinto para columnas nuevas de contexto */
+  thead th.col-contexto {
+    background: #2a3a50;
+  }
+
   /* Column widths */
   .w-num { width: 36px; }
   .w-estado { width: 80px; }
   .w-abc { width: 50px; }
-  .w-desc { width: 280px; }
+  .w-desc { width: 260px; }
   .w-codigo { width: 80px; }
-  .w-stock { width: 70px; }
-  .w-venta { width: 75px; }
-  .w-alcance { width: 70px; }
+  .w-stock { width: 65px; }
+  .w-transito { width: 70px; }
+  .w-pendiente { width: 70px; }
+  .w-maxman { width: 70px; }
+  .w-venta { width: 70px; }
+  .w-alcance { width: 65px; }
   .w-sugerido { width: 75px; }
   .w-cantidad { width: 80px; }
+  .w-cobertura { width: 85px; }
   .w-emb { width: 55px; }
   .w-costo { width: 85px; }
   .w-desc-pct { width: 60px; }
   .w-total { width: 95px; }
-  .w-analisis { width: 95px; }
 
   tbody tr {
     border-bottom: 1px solid var(--border-light);
@@ -301,8 +310,28 @@
     white-space: normal;
     word-break: break-word;
     line-height: 1.3;
-    max-width: 280px;
+    max-width: 260px;
   }
+
+  /* Celdas de contexto (nuevas columnas informativas): fondo sutilmente distinto */
+  td.cell-contexto {
+    background: rgba(70, 114, 177, 0.04);
+    color: var(--text-secondary);
+  }
+  td.cell-contexto.has-value {
+    color: var(--text-primary);
+    font-weight: 500;
+  }
+
+  /* Cobertura Final: códigos de color por días */
+  td.cell-cobertura {
+    font-weight: 600;
+  }
+  .cobertura-critica { color: var(--estado-negativo); }      /* <= 7 días */
+  .cobertura-baja { color: var(--estado-quiebre); }          /* 8-14 días */
+  .cobertura-ok { color: var(--estado-normal); }             /* 15-45 días */
+  .cobertura-alta { color: var(--estado-alerta); }           /* > 45 días */
+  .cobertura-inf { color: var(--text-muted); }               /* sin consumo */
 
   .no-tax-icon {
     display: inline-block;
@@ -368,20 +397,6 @@
   .abc-a { color: var(--estado-negativo); }
   .abc-b { color: var(--estado-alerta); }
   .abc-c { color: var(--text-secondary); }
-
-  .badge-analisis {
-    display: inline-block;
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-size: 10px;
-    font-weight: 600;
-  }
-  .analisis-urgente { background: #fef2f2; color: #dc2626; }
-  .analisis-pedir { background: #eff6ff; color: #2563eb; }
-  .analisis-ajustar { background: #fff7ed; color: #ea580c; }
-  .analisis-no-pedir { background: #f1f5f9; color: #64748b; }
-  .analisis-sobre-stock { background: #fefce8; color: #a16207; }
-  .analisis-sin-consumo { background: #f8fafc; color: #94a3b8; }
 
   /* ===== FOOTER / RESUMEN ===== */
   .footer-bar {
@@ -617,6 +632,18 @@
         </select>
       </div>
       <div class="filter-group">
+        <label>Análisis</label>
+        <select id="filtroAnalisis" class="select-analisis" onchange="aplicarFiltros()">
+          <option value="">Todos</option>
+          <option value="URGENTE">Urgente</option>
+          <option value="PEDIR">Pedir</option>
+          <option value="AJUSTAR">Ajustar</option>
+          <option value="NO PEDIR">No pedir</option>
+          <option value="SOBRE STOCK">Sobre stock</option>
+          <option value="SIN CONSUMO">Sin consumo</option>
+        </select>
+      </div>
+      <div class="filter-group">
         <label>Buscar producto</label>
         <input type="text" id="filtroBuscar" class="input-buscar" placeholder="Código o descripción..." oninput="aplicarFiltros()">
       </div>
@@ -641,15 +668,18 @@
             <th class="w-codigo">Código</th>
             <th class="w-desc">Descripción</th>
             <th class="w-stock col-right" data-tooltip="Stock actual en sistema">Stock</th>
+            <th class="w-transito col-right col-contexto" data-tooltip="Unidades en tránsito (OCs pendientes de recibir)">En Tránsito</th>
+            <th class="w-pendiente col-right col-contexto" data-tooltip="Unidades comprometidas en OVs sin despachar">Pendiente OV</th>
+            <th class="w-maxman col-right col-contexto" data-tooltip="Máximo manual definido por el comprador (si hay)">Máx. Manual</th>
             <th class="w-venta col-right" data-tooltip="Venta semanal promedio">Vta/Sem</th>
             <th class="w-alcance col-right" data-tooltip="Semanas de alcance con stock actual">Alcance</th>
             <th class="w-sugerido col-right" data-tooltip="Cantidad sugerida (redondeada al embalaje)">Sugerido</th>
             <th class="w-cantidad col-right col-editable" data-tooltip="Cantidad a pedir (se ajusta al embalaje)">Cantidad</th>
+            <th class="w-cobertura col-right" data-tooltip="Días de cobertura: (Stock + Tránsito + Cantidad pedida) / Consumo Diario">Cob. Final</th>
             <th class="w-emb col-right" data-tooltip="Embalaje mínimo">Embal.</th>
             <th class="w-costo col-right">Costo Unit.</th>
             <th class="w-desc-pct col-right col-editable" data-tooltip="% descuento de compra">%Desc</th>
             <th class="w-total col-right">Total</th>
-            <th class="w-analisis">Análisis</th>
           </tr>
         </thead>
         <tbody id="tbodyProductos">
@@ -706,7 +736,8 @@
 <script>
 // ============================================================
 // VAROSA - Widget OC para Zoho Creator (via n8n webhooks)
-// V2 - Con embalaje, fecha de entrega, impuestos y descuentos reales
+// V3 - Con columnas En_Transito, Pendiente_OV, Maximo_MANUAL,
+//      Cobertura Final dinámica, y filtro Análisis
 // ============================================================
 
 // ===== CONFIGURACIÓN =====
@@ -751,13 +782,39 @@ function sugeridoRedondeado(producto) {
 }
 
 // ============================================================
+// CÁLCULO DE COBERTURA FINAL (BRUTA)
+// Fórmula: (Stock + En_Transito + Cantidad_Pedida) / Consumo_Diario
+// ============================================================
+function calcularCoberturaFinal(producto, cantidadPedida) {
+  const consumo = parseFloat(producto.Consumo_Diario) || 0;
+  const stock = parseFloat(producto.Stock_Sistema) || 0;
+  const transito = parseFloat(producto.En_Transito) || 0;
+  const pedido = parseFloat(cantidadPedida) || 0;
+
+  if (consumo <= 0) {
+    return { texto: '∞', dias: Infinity, clase: 'cobertura-inf' };
+  }
+
+  const stockFinal = stock + transito + pedido;
+  const dias = stockFinal / consumo;
+
+  let clase;
+  if (dias <= 7) clase = 'cobertura-critica';
+  else if (dias <= 14) clase = 'cobertura-baja';
+  else if (dias <= 45) clase = 'cobertura-ok';
+  else clase = 'cobertura-alta';
+
+  return {
+    texto: Math.round(dias) + ' d',
+    dias: dias,
+    clase: clase
+  };
+}
+
+// ============================================================
 // INICIALIZACIÓN
 // ============================================================
 document.addEventListener('DOMContentLoaded', () => {
-  // Fecha de entrega por defecto: vacía (el comprador la llena)
-  // Si quisieras valor default, descomentar:
-  // document.getElementById('inputFechaEntrega').value = new Date().toISOString().split('T')[0];
-
   cargarProveedores();
 });
 
@@ -877,11 +934,13 @@ async function cargarProductos() {
 function aplicarFiltros() {
   const estado = document.getElementById('filtroEstado').value;
   const abc = document.getElementById('filtroABC').value;
+  const analisis = document.getElementById('filtroAnalisis').value;
   const buscar = document.getElementById('filtroBuscar').value.toLowerCase().trim();
 
   productosFiltrados = productosOriginal.filter(p => {
     if (estado && p.Estado !== estado) return false;
     if (abc && !p.Rotacion?.startsWith(abc)) return false;
+    if (analisis && p.Analisis_Compra !== analisis) return false;
     if (buscar) {
       const matchDesc = (p.Descripcion || '').toLowerCase().includes(buscar);
       const matchCod = (p.Codigo || '').toLowerCase().includes(buscar);
@@ -936,6 +995,14 @@ function renderTabla() {
     const descMonto = subtotal * desc / 100;
     const total = subtotal - descMonto;
 
+    // ===== NUEVAS COLUMNAS INFORMATIVAS =====
+    const enTransito = parseInt(p.En_Transito) || 0;
+    const pendienteOV = parseInt(p.Pendiente_OV) || 0;
+    const maxManual = parseInt(p.Maximo_MANUAL) || 0;
+
+    // Cobertura Final (se calcula con la cantidad actual, puede ser default o mod)
+    const cobertura = calcularCoberturaFinal(p, cant);
+
     // Flag: producto sin Tax_ID = ERROR (no se puede crear OC con él)
     const taxId = (p.Tax_ID || '').toString().trim();
     const sinImpuesto = !taxId || taxId === 'null';
@@ -954,6 +1021,9 @@ function renderTabla() {
       <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-secondary);">${esc(p.Codigo || '')}</td>
       <td class="cell-desc" title="${esc(p.Descripcion)}">${esc(p.Descripcion)}${taxWarning}</td>
       <td class="cell-right">${fmtNum(p.Stock_Sistema)}</td>
+      <td class="cell-right cell-contexto ${enTransito > 0 ? 'has-value' : ''}">${enTransito > 0 ? fmtNum(enTransito) : '—'}</td>
+      <td class="cell-right cell-contexto ${pendienteOV > 0 ? 'has-value' : ''}">${pendienteOV > 0 ? fmtNum(pendienteOV) : '—'}</td>
+      <td class="cell-right cell-contexto ${maxManual > 0 ? 'has-value' : ''}">${maxManual > 0 ? fmtNum(maxManual) : '—'}</td>
       <td class="cell-right">${fmtDec(p.Venta_Semanal)}</td>
       <td class="cell-right">${fmtDec(p.Alcance_Semanal)}</td>
       <td class="cell-right" style="color:var(--varosa-blue);font-weight:500;">${sugeridoMostrar}</td>
@@ -964,6 +1034,7 @@ function renderTabla() {
           onblur="onCantidadBlur(${idx}, this)"
           onfocus="this.select()">
       </td>
+      <td class="cell-right cell-cobertura ${cobertura.clase}" data-cobertura-idx="${idx}">${cobertura.texto}</td>
       <td class="cell-right" style="color:var(--text-muted);font-size:11px;">${emb}</td>
       <td class="cell-right">${fmtMoney(costo)}</td>
       <td class="cell-editable">
@@ -974,7 +1045,6 @@ function renderTabla() {
           style="width:50px;">
       </td>
       <td class="cell-right" style="font-weight:600;">${cant > 0 ? fmtMoney(total) : '—'}</td>
-      <td>${badgeAnalisis(p.Analisis_Compra)}</td>
     </tr>`;
   });
 
@@ -982,6 +1052,24 @@ function renderTabla() {
   recalcularTotales();
   actualizarStats();
   btnCrear.disabled = !hayProductosParaPedir();
+}
+
+// ============================================================
+// RECALCULAR COBERTURA DE UNA FILA (sin re-renderizar todo)
+// ============================================================
+function actualizarCoberturaFila(idx, nuevaCantidad) {
+  const producto = productosOriginal[idx];
+  if (!producto) return;
+
+  const celda = document.querySelector(`td[data-cobertura-idx="${idx}"]`);
+  if (!celda) return;
+
+  const cobertura = calcularCoberturaFinal(producto, nuevaCantidad);
+
+  // Limpiar clases de cobertura previas y aplicar la nueva
+  celda.classList.remove('cobertura-critica', 'cobertura-baja', 'cobertura-ok', 'cobertura-alta', 'cobertura-inf');
+  celda.classList.add(cobertura.clase);
+  celda.textContent = cobertura.texto;
 }
 
 // ============================================================
@@ -997,6 +1085,9 @@ function onCantidadChange(idx, input) {
 
   const row = input.closest('tr');
   if (row) row.classList.add('row-modified');
+
+  // Actualizar cobertura en vivo
+  actualizarCoberturaFila(idx, val);
 
   recalcularTotales();
   actualizarStats();
@@ -1015,6 +1106,7 @@ function onCantidadBlur(idx, input) {
     input.value = 0;
     if (!modificaciones[idx]) modificaciones[idx] = {};
     modificaciones[idx].cantidad = 0;
+    actualizarCoberturaFila(idx, 0);
     recalcularTotales();
     actualizarStats();
     document.getElementById('btnCrearOC').disabled = !hayProductosParaPedir();
@@ -1027,6 +1119,7 @@ function onCantidadBlur(idx, input) {
     if (!modificaciones[idx]) modificaciones[idx] = {};
     modificaciones[idx].cantidad = ajustado;
     input.classList.add('modified');
+    actualizarCoberturaFila(idx, ajustado);
     recalcularTotales();
     actualizarStats();
     document.getElementById('btnCrearOC').disabled = !hayProductosParaPedir();
@@ -1251,6 +1344,7 @@ function limpiarOC() {
   document.getElementById('inputFechaEntrega').value = '';
   document.getElementById('filtroEstado').value = '';
   document.getElementById('filtroABC').value = '';
+  document.getElementById('filtroAnalisis').value = '';
   document.getElementById('filtroBuscar').value = '';
   productosOriginal = [];
   productosFiltrados = [];
@@ -1326,19 +1420,6 @@ function badgeABC(abc) {
   return `<span class="badge-abc ${cls}">${abc}</span>`;
 }
 
-function badgeAnalisis(analisis) {
-  const map = {
-    'URGENTE': 'analisis-urgente',
-    'PEDIR': 'analisis-pedir',
-    'AJUSTAR': 'analisis-ajustar',
-    'NO PEDIR': 'analisis-no-pedir',
-    'SOBRE STOCK': 'analisis-sobre-stock',
-    'SIN CONSUMO': 'analisis-sin-consumo'
-  };
-  const cls = map[analisis] || 'analisis-sin-consumo';
-  return `<span class="badge-analisis ${cls}">${analisis || '—'}</span>`;
-}
-
 // Formatters
 function fmtNum(n) {
   const v = parseInt(n) || 0;
@@ -1361,17 +1442,18 @@ function esc(s) {
 
 // ============================================================
 // DATOS DEMO (para desarrollo fuera de Creator)
+// Incluye los nuevos campos: En_Transito, Pendiente_OV, Maximo_MANUAL, Consumo_Diario
 // ============================================================
 function generarDatosDemo(proveedor) {
   const productos = [
-    { Descripcion: 'DISPENSADOR PROMAX DE 1 ESTACION', Codigo: '1381-A', Item_ID: 'IT001', Tax_ID: '6074712000000106063', Estado: 'QUIEBRE', Rotacion: 'C', Stock_Sistema: 0, Venta_Semanal: 0.35, Alcance_Semanal: 0, Sugerido: 2, Costo_Unitario: 45000, Descuento_Compra_Item: 0, Embalaje_Item: 1, Analisis_Compra: 'URGENTE' },
-    { Descripcion: 'DIVOSAN HYPOFOAM / BIDON 1X57KG', Codigo: '1381-B', Item_ID: 'IT002', Tax_ID: '6074712000000106063', Estado: 'ALERTA', Rotacion: 'A', Stock_Sistema: 3, Venta_Semanal: 2.24, Alcance_Semanal: 1.34, Sugerido: 5, Costo_Unitario: 83460, Descuento_Compra_Item: 5, Embalaje_Item: 1, Analisis_Compra: 'PEDIR' },
-    { Descripcion: 'HD PLUSFOAM VF1 4X5L', Codigo: '1381-C', Item_ID: 'IT003', Tax_ID: '6074712000000106063', Estado: 'NORMAL', Rotacion: 'C', Stock_Sistema: 10, Venta_Semanal: 0, Alcance_Semanal: null, Sugerido: 0, Costo_Unitario: 12532, Descuento_Compra_Item: 0, Embalaje_Item: 4, Analisis_Compra: 'SIN CONSUMO' },
-    { Descripcion: 'SUMA BREAK UP II 4X1 GAL', Codigo: '1381-D', Item_ID: 'IT004', Tax_ID: '6074712000000106063', Estado: 'NORMAL', Rotacion: 'A', Stock_Sistema: 8, Venta_Semanal: 1.4, Alcance_Semanal: 5.7, Sugerido: 0, Costo_Unitario: 27256, Descuento_Compra_Item: 3, Embalaje_Item: 4, Analisis_Compra: 'NO PEDIR' },
-    { Descripcion: 'CLAX 200 24C1 20 LT', Codigo: '1381-E', Item_ID: 'IT005', Tax_ID: '6074712000000106063', Estado: 'CRITICO', Rotacion: 'B', Stock_Sistema: 1, Venta_Semanal: 0.7, Alcance_Semanal: 1.4, Sugerido: 4, Costo_Unitario: 52300, Descuento_Compra_Item: 0, Embalaje_Item: 1, Analisis_Compra: 'PEDIR' },
-    { Descripcion: 'SURE WASH MATIC D10.1 20L (EJEMPLO SIN IMPUESTO)', Codigo: '1381-F', Item_ID: 'IT006', Tax_ID: '', Estado: 'QUIEBRE', Rotacion: 'A', Stock_Sistema: 0, Venta_Semanal: 1.05, Alcance_Semanal: 0, Sugerido: 8, Costo_Unitario: 38700, Descuento_Compra_Item: 5, Embalaje_Item: 6, Analisis_Compra: 'URGENTE' },
-    { Descripcion: 'TASKI SANI CID R3.4 2X5LT', Codigo: '1381-G', Item_ID: 'IT007', Tax_ID: '6074712000000106063', Estado: 'NORMAL', Rotacion: 'B', Stock_Sistema: 6, Venta_Semanal: 0.49, Alcance_Semanal: 12.2, Sugerido: 0, Costo_Unitario: 31200, Descuento_Compra_Item: 0, Embalaje_Item: 2, Analisis_Compra: 'SOBRE STOCK' },
-    { Descripcion: 'OXIVIR TB 4X3.78L (ejemplo decimal)', Codigo: '1381-H', Item_ID: 'IT008', Tax_ID: '6074712000000106063', Estado: 'ALERTA', Rotacion: 'B', Stock_Sistema: 2, Venta_Semanal: 0.56, Alcance_Semanal: 3.6, Sugerido: 3.7, Costo_Unitario: 28900, Descuento_Compra_Item: 10, Embalaje_Item: 4, Analisis_Compra: 'PEDIR' },
+    { Descripcion: 'DISPENSADOR PROMAX DE 1 ESTACION', Codigo: '1381-A', Item_ID: 'IT001', Tax_ID: '6074712000000106063', Estado: 'QUIEBRE', Rotacion: 'C', Stock_Sistema: 0, En_Transito: 0, Pendiente_OV: 2, Maximo_MANUAL: 0, Consumo_Diario: 0.05, Venta_Semanal: 0.35, Alcance_Semanal: 0, Sugerido: 2, Costo_Unitario: 45000, Descuento_Compra_Item: 0, Embalaje_Item: 1, Analisis_Compra: 'URGENTE' },
+    { Descripcion: 'DIVOSAN HYPOFOAM / BIDON 1X57KG', Codigo: '1381-B', Item_ID: 'IT002', Tax_ID: '6074712000000106063', Estado: 'ALERTA', Rotacion: 'A', Stock_Sistema: 3, En_Transito: 4, Pendiente_OV: 1, Maximo_MANUAL: 10, Consumo_Diario: 0.32, Venta_Semanal: 2.24, Alcance_Semanal: 1.34, Sugerido: 5, Costo_Unitario: 83460, Descuento_Compra_Item: 5, Embalaje_Item: 1, Analisis_Compra: 'PEDIR' },
+    { Descripcion: 'HD PLUSFOAM VF1 4X5L', Codigo: '1381-C', Item_ID: 'IT003', Tax_ID: '6074712000000106063', Estado: 'NORMAL', Rotacion: 'C', Stock_Sistema: 10, En_Transito: 0, Pendiente_OV: 0, Maximo_MANUAL: 0, Consumo_Diario: 0, Venta_Semanal: 0, Alcance_Semanal: null, Sugerido: 0, Costo_Unitario: 12532, Descuento_Compra_Item: 0, Embalaje_Item: 4, Analisis_Compra: 'SIN CONSUMO' },
+    { Descripcion: 'SUMA BREAK UP II 4X1 GAL', Codigo: '1381-D', Item_ID: 'IT004', Tax_ID: '6074712000000106063', Estado: 'NORMAL', Rotacion: 'A', Stock_Sistema: 8, En_Transito: 0, Pendiente_OV: 2, Maximo_MANUAL: 12, Consumo_Diario: 0.2, Venta_Semanal: 1.4, Alcance_Semanal: 5.7, Sugerido: 0, Costo_Unitario: 27256, Descuento_Compra_Item: 3, Embalaje_Item: 4, Analisis_Compra: 'NO PEDIR' },
+    { Descripcion: 'CLAX 200 24C1 20 LT', Codigo: '1381-E', Item_ID: 'IT005', Tax_ID: '6074712000000106063', Estado: 'CRITICO', Rotacion: 'B', Stock_Sistema: 1, En_Transito: 2, Pendiente_OV: 0, Maximo_MANUAL: 0, Consumo_Diario: 0.1, Venta_Semanal: 0.7, Alcance_Semanal: 1.4, Sugerido: 4, Costo_Unitario: 52300, Descuento_Compra_Item: 0, Embalaje_Item: 1, Analisis_Compra: 'PEDIR' },
+    { Descripcion: 'SURE WASH MATIC D10.1 20L (EJEMPLO SIN IMPUESTO)', Codigo: '1381-F', Item_ID: 'IT006', Tax_ID: '', Estado: 'QUIEBRE', Rotacion: 'A', Stock_Sistema: 0, En_Transito: 0, Pendiente_OV: 3, Maximo_MANUAL: 8, Consumo_Diario: 0.15, Venta_Semanal: 1.05, Alcance_Semanal: 0, Sugerido: 8, Costo_Unitario: 38700, Descuento_Compra_Item: 5, Embalaje_Item: 6, Analisis_Compra: 'URGENTE' },
+    { Descripcion: 'TASKI SANI CID R3.4 2X5LT', Codigo: '1381-G', Item_ID: 'IT007', Tax_ID: '6074712000000106063', Estado: 'NORMAL', Rotacion: 'B', Stock_Sistema: 6, En_Transito: 0, Pendiente_OV: 0, Maximo_MANUAL: 0, Consumo_Diario: 0.07, Venta_Semanal: 0.49, Alcance_Semanal: 12.2, Sugerido: 0, Costo_Unitario: 31200, Descuento_Compra_Item: 0, Embalaje_Item: 2, Analisis_Compra: 'SOBRE STOCK' },
+    { Descripcion: 'OXIVIR TB 4X3.78L (ejemplo decimal)', Codigo: '1381-H', Item_ID: 'IT008', Tax_ID: '6074712000000106063', Estado: 'ALERTA', Rotacion: 'B', Stock_Sistema: 2, En_Transito: 0, Pendiente_OV: 1, Maximo_MANUAL: 6, Consumo_Diario: 0.08, Venta_Semanal: 0.56, Alcance_Semanal: 3.6, Sugerido: 3.7, Costo_Unitario: 28900, Descuento_Compra_Item: 10, Embalaje_Item: 4, Analisis_Compra: 'PEDIR' },
   ];
   return productos;
 }
