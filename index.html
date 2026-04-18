@@ -806,6 +806,7 @@
 // ============================================================
 // VAROSA - Widget OC para Zoho Creator (via n8n webhooks)
 // V5 - Captura usuario + snapshot completo para auditoría
+// V5.1 - Ordenamiento inicial por Sugerido descendente
 // ============================================================
 
 // ===== CONFIGURACIÓN =====
@@ -869,6 +870,45 @@ function sugeridoRedondeado(producto) {
   const sug = parseFloat(producto.Sugerido) || 0;
   if (sug <= 0) return 0;
   return redondearAEmbalaje(sug, embalajeDe(producto));
+}
+
+// ============================================================
+// ORDENAMIENTO INICIAL POR SUGERIDO (descendente)  [V5.1]
+// Aplicado una sola vez al cargar productos de un proveedor.
+// Criterio:
+//   1. Productos con Sugerido > 0 primero, ordenados de mayor a menor
+//      usando el Sugerido redondeado al embalaje (lo que el usuario ve).
+//   2. Empates desempatan por el Sugerido bruto del backend (mantiene
+//      "peso" real cuando dos productos distintos quedan en la misma
+//      cifra redondeada).
+//   3. Productos con Sugerido = 0 van al final, ordenados por código
+//      para que el orden sea estable y predecible.
+//
+// NOTA: el orden se fija al cargar y NO cambia con ediciones
+// posteriores (stock, cantidad, filtros). Esto es intencional para
+// evitar que las filas se muevan solas mientras el usuario trabaja.
+// ============================================================
+function ordenarProductosPorSugerido(productos) {
+  return [...productos].sort((a, b) => {
+    const sugA = sugeridoRedondeado(a);
+    const sugB = sugeridoRedondeado(b);
+
+    // 1. Productos con sugerido > 0 van primero
+    if (sugA > 0 && sugB === 0) return -1;
+    if (sugA === 0 && sugB > 0) return 1;
+
+    // 2. Ambos con sugerido > 0 → ordenar por redondeado desc
+    if (sugA > 0 && sugB > 0) {
+      if (sugB !== sugA) return sugB - sugA;
+      // Desempate por Sugerido bruto (backend) desc
+      const brutoA = parseFloat(a.Sugerido) || 0;
+      const brutoB = parseFloat(b.Sugerido) || 0;
+      return brutoB - brutoA;
+    }
+
+    // 3. Ambos con sugerido 0 → orden estable por código
+    return (a.Codigo || '').localeCompare(b.Codigo || '');
+  });
 }
 
 // ============================================================
@@ -1039,7 +1079,8 @@ async function cargarProductos() {
   if (MODO_DEMO) {
     setTimeout(() => {
       mostrarLoading(false);
-      productosOriginal = generarDatosDemo(proveedor);
+      // [V5.1] Ordenar por Sugerido descendente al cargar
+      productosOriginal = ordenarProductosPorSugerido(generarDatosDemo(proveedor));
       aplicarFiltros();
       mostrarStatus(`${productosOriginal.length} productos (DEMO)`, 'success');
     }, 400);
@@ -1059,7 +1100,8 @@ async function cargarProductos() {
     mostrarLoading(false);
 
     if (data.productos && Array.isArray(data.productos)) {
-      productosOriginal = data.productos;
+      // [V5.1] Ordenar por Sugerido descendente al cargar
+      productosOriginal = ordenarProductosPorSugerido(data.productos);
       aplicarFiltros();
       mostrarStatus(`${productosOriginal.length} productos cargados para ${proveedor}`, 'success');
     } else {
@@ -1727,7 +1769,7 @@ function construirSnapshot() {
   });
 
   return {
-    version: 'widget-v5',
+    version: 'widget-v5.1',
     timestamp_iso: new Date().toISOString(),
     proveedor: proveedorActual,
     fecha_entrega: fechaEntrega,
