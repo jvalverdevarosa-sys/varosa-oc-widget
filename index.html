@@ -805,8 +805,12 @@
 <script>
 // ============================================================
 // VAROSA - Widget OC para Zoho Creator (via n8n webhooks)
-// V5 - Captura usuario + snapshot completo para auditoría
+// V5   - Captura usuario + snapshot completo para auditoría
 // V5.1 - Ordenamiento inicial por Sugerido descendente
+// V6   - Integración con Proveedor_ID_Books (contact_id de Books).
+//        El matching deja de depender del nombre del proveedor.
+//        Soporta fallback al formato legado si el webhook aún
+//        devuelve array de strings en "proveedores".
 // ============================================================
 
 // ===== CONFIGURACIÓN =====
@@ -818,25 +822,10 @@ const ENDPOINTS = {
 };
 
 // ===== CAPTURA DE USUARIO (desde URL parameter) =====
-// Creator inyecta el usuario logueado vía parámetro ?usuario=xxx
-// Ejemplo de URL embed en Creator:
-//   https://tu-widget.easypanel.host/?usuario=<%= zoho.loginuser %>
 const URL_PARAMS = new URLSearchParams(window.location.search);
 const USUARIO_ACTUAL = URL_PARAMS.get('usuario') || URL_PARAMS.get('user') || 'desconocido';
 
 // ===== PERMISOS =====
-// Flag para habilitar/deshabilitar edición de Stock.
-// Jeank lo controla según su lógica (URL param, email hardcoded, etc).
-// Por defecto: true (permitir a todos, consistente con Cantidad y %Desc).
-// Para restringir, cambiar a false o implementar la lógica aquí:
-//
-//   Ejemplo 1 (URL param):
-//     let STOCK_EDITABLE = URL_PARAMS.get('edit_stock') === 'true';
-//
-//   Ejemplo 2 (emails autorizados):
-//     const USUARIOS_AUTORIZADOS = ['alberth@varosacr.com', 'jeank@varosacr.com'];
-//     let STOCK_EDITABLE = USUARIOS_AUTORIZADOS.includes(USUARIO_ACTUAL);
-//
 let STOCK_EDITABLE = true;
 
 // Modo demo: si n8n no responde, usar datos simulados
@@ -845,14 +834,17 @@ let MODO_DEMO = false;
 // Estado global
 let productosOriginal = [];
 let productosFiltrados = [];
-let proveedorActual = '';
+let proveedorActual = '';        // Nombre del proveedor seleccionado (para display y búsqueda de productos)
+let proveedorIdActual = '';      // [V6] contact_id de Books del proveedor seleccionado
+let proveedoresMap = {};         // [V6] Mapa: nombre -> {id, nombre, status}. Clave por nombre porque la búsqueda de productos
+                                 //      sigue siendo por nombre (Opción X). Si hubiera nombres duplicados con IDs distintos
+                                 //      en la fuente, el n8n los deduplica antes; aquí confiamos en esa deduplicación.
 let modificaciones = {};
 
 // ============================================================
 // HELPERS DE EMBALAJE (redondeo hacia arriba al múltiplo)
 // ============================================================
 function embalajeDe(producto) {
-  // Prioriza Embalaje_Item (nueva columna V5 de Artículos), fallback a Embalaje (legado)
   const emb = parseInt(producto.Embalaje_Item) || parseInt(producto.Embalaje) || 1;
   return emb >= 1 ? emb : 1;
 }
@@ -862,7 +854,6 @@ function redondearAEmbalaje(cantidad, embalaje) {
   const e = parseInt(embalaje) || 1;
   if (c <= 0) return 0;
   if (e <= 1) return Math.ceil(c);
-  // Redondeo hacia arriba al múltiplo del embalaje
   return Math.ceil(c / e) * e;
 }
 
@@ -874,57 +865,28 @@ function sugeridoRedondeado(producto) {
 
 // ============================================================
 // ORDENAMIENTO INICIAL POR SUGERIDO (descendente)  [V5.1]
-// Aplicado una sola vez al cargar productos de un proveedor.
-// Criterio:
-//   1. Productos con Sugerido > 0 primero, ordenados de mayor a menor
-//      usando el Sugerido redondeado al embalaje (lo que el usuario ve).
-//   2. Empates desempatan por el Sugerido bruto del backend (mantiene
-//      "peso" real cuando dos productos distintos quedan en la misma
-//      cifra redondeada).
-//   3. Productos con Sugerido = 0 van al final, ordenados por código
-//      para que el orden sea estable y predecible.
-//
-// NOTA: el orden se fija al cargar y NO cambia con ediciones
-// posteriores (stock, cantidad, filtros). Esto es intencional para
-// evitar que las filas se muevan solas mientras el usuario trabaja.
 // ============================================================
 function ordenarProductosPorSugerido(productos) {
   return [...productos].sort((a, b) => {
     const sugA = sugeridoRedondeado(a);
     const sugB = sugeridoRedondeado(b);
-
-    // 1. Productos con sugerido > 0 van primero
     if (sugA > 0 && sugB === 0) return -1;
     if (sugA === 0 && sugB > 0) return 1;
-
-    // 2. Ambos con sugerido > 0 → ordenar por redondeado desc
     if (sugA > 0 && sugB > 0) {
       if (sugB !== sugA) return sugB - sugA;
-      // Desempate por Sugerido bruto (backend) desc
       const brutoA = parseFloat(a.Sugerido) || 0;
       const brutoB = parseFloat(b.Sugerido) || 0;
       return brutoB - brutoA;
     }
-
-    // 3. Ambos con sugerido 0 → orden estable por código
     return (a.Codigo || '').localeCompare(b.Codigo || '');
   });
 }
 
 // ============================================================
-// CÁLCULO DINÁMICO DEL SUGERIDO (Fórmula V6)
-// Replica la lógica SQL de ARNOLD V6 en JS para recalcular cuando
-// el comprador ajusta el Stock manualmente.
-//
-// Sugerido = MAX(0, (Max_A_Usar - Stock - En_Transito + Pendiente_OV) × factor_ABC)
-//
-// Donde:
-//   Max_A_Usar: viene del backend (IF Max_Manual>0 THEN Max_Manual ELSE Max_CALCULADO)
-//   factor_ABC: 0.75 si ABC ∈ (A, 2A, A GENERAL, ¡A), sino 1.0
+// CÁLCULO DINÁMICO DEL SUGERIDO (Fórmula V6 - Backend ARNOLD)
 // ============================================================
 function factorABC(rotacion) {
   const r = (rotacion || '').toString().toUpperCase().trim();
-  // Clases A en cualquiera de sus variantes llevan factor 0.75
   if (r === 'A' || r === '2A' || r === 'A GENERAL' || r === '¡A') {
     return 0.75;
   }
@@ -939,15 +901,10 @@ function calcularSugeridoDinamico(producto, stockAjustado) {
   const enTransito = parseFloat(producto.En_Transito) || 0;
   const pendienteOV = parseFloat(producto.Pendiente_OV) || 0;
   const factor = factorABC(producto.Rotacion);
-
-  // Fórmula V6
   const sugerido = Math.max(0, (maxAUsar - stock - enTransito + pendienteOV) * factor);
-
-  // Redondear al embalaje
   return redondearAEmbalaje(sugerido, embalajeDe(producto));
 }
 
-// Devuelve el Stock efectivo (ajustado si hay, sino el original)
 function stockEfectivo(producto, idx) {
   const mod = modificaciones[idx] || {};
   if (mod.stockAjustado !== undefined && mod.stockAjustado !== null) {
@@ -956,7 +913,6 @@ function stockEfectivo(producto, idx) {
   return parseFloat(producto.Stock_Sistema) || 0;
 }
 
-// Devuelve el Sugerido efectivo: dinámico si hay stock ajustado, original sino
 function sugeridoEfectivo(producto, idx) {
   const mod = modificaciones[idx] || {};
   if (mod.stockAjustado !== undefined && mod.stockAjustado !== null) {
@@ -965,11 +921,6 @@ function sugeridoEfectivo(producto, idx) {
   return sugeridoRedondeado(producto);
 }
 
-// ============================================================
-// CÁLCULO DE COBERTURA FINAL (BRUTA)
-// Fórmula: (Stock + En_Transito + Cantidad_Pedida) / Consumo_Diario
-// Acepta stockOverride para usar el stock ajustado por el comprador.
-// ============================================================
 function calcularCoberturaFinal(producto, cantidadPedida, stockOverride) {
   const consumo = parseFloat(producto.Consumo_Diario) || 0;
   const stock = (stockOverride !== undefined && stockOverride !== null)
@@ -981,21 +932,14 @@ function calcularCoberturaFinal(producto, cantidadPedida, stockOverride) {
   if (consumo <= 0) {
     return { texto: '∞', dias: Infinity, clase: 'cobertura-inf' };
   }
-
   const stockFinal = stock + transito + pedido;
   const dias = stockFinal / consumo;
-
   let clase;
   if (dias <= 7) clase = 'cobertura-critica';
   else if (dias <= 14) clase = 'cobertura-baja';
   else if (dias <= 45) clase = 'cobertura-ok';
   else clase = 'cobertura-alta';
-
-  return {
-    texto: Math.round(dias) + ' d',
-    dias: dias,
-    clase: clase
-  };
+  return { texto: Math.round(dias) + ' d', dias: dias, clase: clase };
 }
 
 // ============================================================
@@ -1006,7 +950,10 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // ============================================================
-// CARGAR PROVEEDORES
+// CARGAR PROVEEDORES  [V6]
+// Lee preferentemente proveedores_v2 (formato nuevo con {id, nombre, status}).
+// Si solo existe el formato legado (array de strings), lo usa con IDs vacíos
+// — en ese caso el usuario verá un error al intentar crear OC porque no hay ID.
 // ============================================================
 async function cargarProveedores() {
   const sel = document.getElementById('selProveedor');
@@ -1021,15 +968,46 @@ async function cargarProveedores() {
     if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
     const data = await resp.json();
 
-    if (data.proveedores && Array.isArray(data.proveedores)) {
-      data.proveedores.forEach(p => {
+    // [V6] Detectar formato: preferir proveedores_v2 (con IDs)
+    if (data.proveedores_v2 && Array.isArray(data.proveedores_v2) && data.proveedores_v2.length > 0) {
+      // Formato nuevo: [{id, nombre, status}, ...]
+      proveedoresMap = {};
+      data.proveedores_v2.forEach(p => {
+        const nombre = (p.nombre || '').trim();
+        if (!nombre) return;
+        // Guardar el primer ocurrencia; el n8n ya deduplica
+        if (!proveedoresMap[nombre]) {
+          proveedoresMap[nombre] = {
+            id: (p.id || '').toString().trim(),
+            nombre: nombre,
+            status: p.status || ''
+          };
+        }
         const opt = document.createElement('option');
-        opt.value = p;
-        opt.textContent = p;
+        opt.value = nombre;               // value = nombre (la búsqueda de productos sigue siendo por nombre)
+        opt.textContent = nombre;          // texto visible = nombre
+        opt.dataset.proveedorId = p.id;    // ID guardado en el dataset del <option>
         sel.appendChild(opt);
       });
-      mostrarStatus(`${data.proveedores.length} proveedores cargados`, 'success');
-    } else {
+      mostrarStatus(`${data.proveedores_v2.length} proveedores cargados`, 'success');
+    }
+    else if (data.proveedores && Array.isArray(data.proveedores)) {
+      // [V6] Fallback al formato legado (array de strings sin IDs).
+      // Advertencia: en este modo NO se podrán crear OCs porque no hay proveedor_id.
+      console.warn('[Widget V6] Webhook devolvió formato legado sin IDs. Creación de OC quedará bloqueada.');
+      proveedoresMap = {};
+      data.proveedores.forEach(nombre => {
+        const nombreTrim = (nombre || '').trim();
+        if (!nombreTrim) return;
+        proveedoresMap[nombreTrim] = { id: '', nombre: nombreTrim, status: 'LEGACY_SIN_ID' };
+        const opt = document.createElement('option');
+        opt.value = nombreTrim;
+        opt.textContent = nombreTrim;
+        sel.appendChild(opt);
+      });
+      mostrarStatus(`${data.proveedores.length} proveedores cargados (formato legado — sin IDs)`, 'loading');
+    }
+    else {
       throw new Error('Formato de respuesta inválido');
     }
   } catch(e) {
@@ -1043,28 +1021,35 @@ async function cargarProveedores() {
 function cargarProveedoresDemo() {
   const sel = document.getElementById('selProveedor');
   const proveedoresDemo = [
-    'DIVERSEY COSTA RICA SRL',
-    'ESSITY CENTROAMERICA S.A.',
-    'GLOBAL KEMICAL S.A.',
-    'INDUSTRIAS GAREND S.A.',
-    'SOLQUISA',
-    'IMPORTADORA PROMARK DE CENTROAMERICA S.A.',
-    'APEX SUMINISTROS S.A'
+    { id: '6074712000000000001', nombre: 'DIVERSEY COSTA RICA SRL' },
+    { id: '6074712000000000002', nombre: 'ESSITY CENTROAMERICA S.A.' },
+    { id: '6074712000000000003', nombre: 'GLOBAL KEMICAL S.A.' },
+    { id: '6074712000000000004', nombre: 'INDUSTRIAS GAREND S.A.' },
+    { id: '6074712000000000005', nombre: 'SOLQUISA' },
+    { id: '6074712000000000006', nombre: 'IMPORTADORA PROMARK DE CENTROAMERICA S.A.' },
+    { id: '6074712000000000007', nombre: 'APEX SUMINISTROS S.A' }
   ];
+  proveedoresMap = {};
   proveedoresDemo.forEach(p => {
+    proveedoresMap[p.nombre] = { id: p.id, nombre: p.nombre, status: 'OK' };
     const opt = document.createElement('option');
-    opt.value = p;
-    opt.textContent = p;
+    opt.value = p.nombre;
+    opt.textContent = p.nombre;
+    opt.dataset.proveedorId = p.id;
     sel.appendChild(opt);
   });
 }
 
 // ============================================================
-// CARGAR PRODUCTOS POR PROVEEDOR
+// CARGAR PRODUCTOS POR PROVEEDOR  [V6]
+// Opción X: sigue usando el nombre como parámetro al webhook de productos.
+// Pero guarda el contact_id internamente para usarlo al crear la OC.
 // ============================================================
 async function cargarProductos() {
   const proveedor = document.getElementById('selProveedor').value;
   if (!proveedor) {
+    proveedorActual = '';
+    proveedorIdActual = '';
     productosOriginal = [];
     productosFiltrados = [];
     modificaciones = {};
@@ -1073,13 +1058,14 @@ async function cargarProductos() {
   }
 
   proveedorActual = proveedor;
+  // [V6] Recuperar el contact_id del proveedor seleccionado
+  proveedorIdActual = (proveedoresMap[proveedor] && proveedoresMap[proveedor].id) || '';
   modificaciones = {};
   mostrarLoading(true);
 
   if (MODO_DEMO) {
     setTimeout(() => {
       mostrarLoading(false);
-      // [V5.1] Ordenar por Sugerido descendente al cargar
       productosOriginal = ordenarProductosPorSugerido(generarDatosDemo(proveedor));
       aplicarFiltros();
       mostrarStatus(`${productosOriginal.length} productos (DEMO)`, 'success');
@@ -1100,7 +1086,6 @@ async function cargarProductos() {
     mostrarLoading(false);
 
     if (data.productos && Array.isArray(data.productos)) {
-      // [V5.1] Ordenar por Sugerido descendente al cargar
       productosOriginal = ordenarProductosPorSugerido(data.productos);
       aplicarFiltros();
       mostrarStatus(`${productosOriginal.length} productos cargados para ${proveedor}`, 'success');
@@ -1170,21 +1155,16 @@ function renderTabla() {
     const isModified = mod.cantidad !== undefined || mod.descuento !== undefined || hasStockAjuste;
     const emb = embalajeDe(p);
 
-    // Stock: efectivo (ajustado o original)
     const stockActual = stockEfectivo(p, idx);
     const stockOriginal = parseFloat(p.Stock_Sistema) || 0;
 
-    // Sugerido: dinámico si hay ajuste de stock, original sino
     const cantidadDefault = sugeridoEfectivo(p, idx);
     const sugeridoOriginal = sugeridoRedondeado(p);
     const sugeridoFueRecalculado = hasStockAjuste && (cantidadDefault !== sugeridoOriginal);
 
     const cantidad = mod.cantidad !== undefined ? mod.cantidad : (cantidadDefault > 0 ? cantidadDefault : '');
-
-    // Descuento por defecto: del producto (nueva columna Descuento_Compra_Item)
     const descDefault = parseFloat(p.Descuento_Compra_Item) || parseFloat(p.Descuento_Compra) || 0;
     const descPct = mod.descuento !== undefined ? mod.descuento : descDefault;
-
     const costo = parseFloat(p.Costo_Unitario) || 0;
     const cant = parseFloat(cantidad) || 0;
     const desc = parseFloat(descPct) || 0;
@@ -1192,15 +1172,12 @@ function renderTabla() {
     const descMonto = subtotal * desc / 100;
     const total = subtotal - descMonto;
 
-    // ===== COLUMNAS INFORMATIVAS =====
     const enTransito = parseInt(p.En_Transito) || 0;
     const pendienteOV = parseInt(p.Pendiente_OV) || 0;
     const maxManual = parseInt(p.Maximo_MANUAL) || 0;
 
-    // Cobertura Final (usa stock efectivo)
     const cobertura = calcularCoberturaFinal(p, cant, stockActual);
 
-    // Flag: producto sin Tax_ID = ERROR (no se puede crear OC con él)
     const taxId = (p.Tax_ID || '').toString().trim();
     const sinImpuesto = !taxId || taxId === 'null';
     const sinImpuestoClass = (sinImpuesto && cant > 0) ? 'row-sin-impuesto' : '';
@@ -1208,13 +1185,11 @@ function renderTabla() {
       ? '<span class="no-tax-icon" title="Sin impuesto configurado — corrija en Zoho Inventory">⚠</span>'
       : '';
 
-    // Sugerido: mostrar redondeado o "—"
     const sugeridoMostrar = cantidadDefault > 0 ? fmtNum(cantidadDefault) : '—';
     const sugeridoTooltipAjuste = sugeridoFueRecalculado
       ? `title="Recalculado con stock ajustado. Original era: ${sugeridoOriginal}"`
       : '';
 
-    // ===== CELDA DE STOCK (editable o readonly según flag) =====
     let celdaStock;
     if (STOCK_EDITABLE) {
       celdaStock = `<td class="cell-stock-editable">
@@ -1271,43 +1246,31 @@ function renderTabla() {
 }
 
 // ============================================================
-// RECALCULAR COBERTURA DE UNA FILA (sin re-renderizar todo)
-// Usa el stock efectivo (ajustado si hay, sino el original)
+// RECALCULAR COBERTURA DE UNA FILA
 // ============================================================
 function actualizarCoberturaFila(idx, nuevaCantidad) {
   const producto = productosOriginal[idx];
   if (!producto) return;
-
   const celda = document.querySelector(`td[data-cobertura-idx="${idx}"]`);
   if (!celda) return;
-
   const stockActual = stockEfectivo(producto, idx);
   const cobertura = calcularCoberturaFinal(producto, nuevaCantidad, stockActual);
-
-  // Limpiar clases de cobertura previas y aplicar la nueva
   celda.classList.remove('cobertura-critica', 'cobertura-baja', 'cobertura-ok', 'cobertura-alta', 'cobertura-inf');
   celda.classList.add(cobertura.clase);
   celda.textContent = cobertura.texto;
 }
 
-// ============================================================
-// RECALCULAR SUGERIDO DE UNA FILA (cuando se edita Stock)
-// ============================================================
 function actualizarSugeridoFila(idx) {
   const producto = productosOriginal[idx];
   if (!producto) return;
-
   const celda = document.querySelector(`td[data-sugerido-idx="${idx}"]`);
   if (!celda) return;
-
   const mod = modificaciones[idx] || {};
   const hasStockAjuste = mod.stockAjustado !== undefined && mod.stockAjustado !== null;
   const sugeridoNuevo = sugeridoEfectivo(producto, idx);
   const sugeridoOriginal = sugeridoRedondeado(producto);
   const fueRecalculado = hasStockAjuste && (sugeridoNuevo !== sugeridoOriginal);
-
   celda.textContent = sugeridoNuevo > 0 ? fmtNum(sugeridoNuevo) : '—';
-
   if (fueRecalculado) {
     celda.classList.add('recalculated');
     celda.title = `Recalculado con stock ajustado. Original era: ${sugeridoOriginal}`;
@@ -1323,19 +1286,13 @@ function actualizarSugeridoFila(idx) {
 function onStockChange(idx, input) {
   const producto = productosOriginal[idx];
   if (!producto) return;
-
   const stockOriginal = parseFloat(input.dataset.stockOriginal) || 0;
   const stockNuevo = parseFloat(input.value);
-
-  // Validación mínima
   if (isNaN(stockNuevo)) {
     input.value = stockOriginal;
     return;
   }
-
   if (!modificaciones[idx]) modificaciones[idx] = {};
-
-  // Si el valor es igual al original, considerarlo como no-ajuste
   if (stockNuevo === stockOriginal) {
     delete modificaciones[idx].stockAjustado;
     input.classList.remove('modified');
@@ -1345,8 +1302,6 @@ function onStockChange(idx, input) {
     input.classList.add('modified');
     input.title = `Ajustado manualmente. Original: ${stockOriginal}`;
   }
-
-  // Actualizar marca visual de fila modificada
   const row = input.closest('tr');
   if (row) {
     const hayAlgunaMod = modificaciones[idx].cantidad !== undefined
@@ -1354,11 +1309,7 @@ function onStockChange(idx, input) {
       || modificaciones[idx].stockAjustado !== undefined;
     row.classList.toggle('row-modified', hayAlgunaMod);
   }
-
-  // Recalcular Sugerido dinámicamente
   actualizarSugeridoFila(idx);
-
-  // Si la cantidad NO fue modificada manualmente, sincronizarla con el nuevo sugerido
   const mod = modificaciones[idx];
   if (mod.cantidad === undefined) {
     const inputCantidad = row ? row.querySelector('.cell-editable input[onchange*="onCantidadChange"]') : null;
@@ -1367,13 +1318,8 @@ function onStockChange(idx, input) {
       inputCantidad.value = nuevoSugerido > 0 ? nuevoSugerido : '';
     }
   }
-
-  // Recalcular Cobertura Final con el nuevo stock
-  const cantidadActual = (mod.cantidad !== undefined)
-    ? mod.cantidad
-    : sugeridoEfectivo(producto, idx);
+  const cantidadActual = (mod.cantidad !== undefined) ? mod.cantidad : sugeridoEfectivo(producto, idx);
   actualizarCoberturaFila(idx, cantidadActual);
-
   recalcularTotales();
   actualizarStats();
   document.getElementById('btnCrearOC').disabled = !hayProductosParaPedir();
@@ -1382,24 +1328,17 @@ function onStockChange(idx, input) {
 function restaurarStock(idx) {
   const producto = productosOriginal[idx];
   if (!producto) return;
-
   if (!modificaciones[idx]) return;
   delete modificaciones[idx].stockAjustado;
-
-  // Encontrar la fila y el input
   const row = document.querySelector(`tr[data-idx="${idx}"]`);
   if (!row) return;
-
   const inputStock = row.querySelector('.cell-stock-editable input');
   if (inputStock) {
     inputStock.value = parseFloat(producto.Stock_Sistema) || 0;
     inputStock.classList.remove('modified');
     inputStock.title = 'Stock del sistema (editable)';
   }
-
-  // Recalcular todo
   actualizarSugeridoFila(idx);
-
   const mod = modificaciones[idx];
   if (mod.cantidad === undefined) {
     const inputCantidad = row.querySelector('input[onchange*="onCantidadChange"]');
@@ -1408,16 +1347,10 @@ function restaurarStock(idx) {
       inputCantidad.value = sugerido > 0 ? sugerido : '';
     }
   }
-
-  const cantidadActual = (mod.cantidad !== undefined)
-    ? mod.cantidad
-    : sugeridoRedondeado(producto);
+  const cantidadActual = (mod.cantidad !== undefined) ? mod.cantidad : sugeridoRedondeado(producto);
   actualizarCoberturaFila(idx, cantidadActual);
-
-  // Actualizar marca de fila modificada
   const hayAlgunaMod = mod.cantidad !== undefined || mod.descuento !== undefined;
   row.classList.toggle('row-modified', hayAlgunaMod);
-
   recalcularTotales();
   actualizarStats();
   document.getElementById('btnCrearOC').disabled = !hayProductosParaPedir();
@@ -1427,32 +1360,23 @@ function restaurarStock(idx) {
 // EVENTOS DE EDICIÓN
 // ============================================================
 function onCantidadChange(idx, input) {
-  // onchange dispara cuando se confirma un cambio (tecla Enter o perder foco)
-  // El ajuste real se hace en onBlur para evitar saltos mientras se escribe
   const val = parseInt(input.value) || 0;
   if (!modificaciones[idx]) modificaciones[idx] = {};
   modificaciones[idx].cantidad = val;
   input.classList.add('modified');
-
   const row = input.closest('tr');
   if (row) row.classList.add('row-modified');
-
-  // Actualizar cobertura en vivo
   actualizarCoberturaFila(idx, val);
-
   recalcularTotales();
   actualizarStats();
   document.getElementById('btnCrearOC').disabled = !hayProductosParaPedir();
 }
 
 function onCantidadBlur(idx, input) {
-  // Al perder foco: ajusta al múltiplo del embalaje (Opción 1 — automático)
   const producto = productosOriginal[idx];
   if (!producto) return;
-
   const emb = embalajeDe(producto);
   const valActual = parseInt(input.value) || 0;
-
   if (valActual <= 0) {
     input.value = 0;
     if (!modificaciones[idx]) modificaciones[idx] = {};
@@ -1463,7 +1387,6 @@ function onCantidadBlur(idx, input) {
     document.getElementById('btnCrearOC').disabled = !hayProductosParaPedir();
     return;
   }
-
   const ajustado = redondearAEmbalaje(valActual, emb);
   if (ajustado !== valActual) {
     input.value = ajustado;
@@ -1485,7 +1408,6 @@ function onDescuentoChange(idx, input) {
   if (!modificaciones[idx]) modificaciones[idx] = {};
   modificaciones[idx].descuento = val;
   input.classList.add('modified');
-
   recalcularTotales();
 }
 
@@ -1500,7 +1422,6 @@ function recalcularTotales() {
   let lineasModificadas = Object.keys(modificaciones).filter(k =>
     modificaciones[k].cantidad !== undefined
   ).length;
-
   productosFiltrados.forEach((p, i) => {
     const idx = productosOriginal.indexOf(p);
     const mod = modificaciones[idx] || {};
@@ -1510,20 +1431,16 @@ function recalcularTotales() {
     const descPct = mod.descuento !== undefined ? mod.descuento : descDefault;
     const costo = parseFloat(p.Costo_Unitario) || 0;
     const cant = parseFloat(cantidad) || 0;
-
     if (cant > 0) {
       const sub = cant * costo;
       const desc = sub * descPct / 100;
       subtotal += sub;
       descuentoTotal += desc;
       lineasConCantidad++;
-
-      // Contar sin impuesto (solo si tiene cantidad)
       const taxId = (p.Tax_ID || '').toString().trim();
       if (!taxId || taxId === 'null') lineasSinImpuesto++;
     }
   });
-
   document.getElementById('totalSubtotal').textContent = fmtMoney(subtotal);
   document.getElementById('totalDescuento').textContent = '-' + fmtMoney(descuentoTotal);
   document.getElementById('totalGrand').textContent = fmtMoney(subtotal - descuentoTotal);
@@ -1556,14 +1473,19 @@ function hayProductosParaPedir() {
 }
 
 // ============================================================
-// CREAR OC
+// CREAR OC  [V6 — con validación de proveedor_id]
+// Orden de validaciones:
+//   1. Hay productos con cantidad > 0
+//   2. Hay fecha de entrega
+//   3. Hay proveedor_id (contact_id de Books)  <-- NUEVO V6
+//   4. No hay productos sin Tax_ID
+//   5. Confirmación normal
 // ============================================================
 function confirmarCrearOC() {
   const items = obtenerItemsParaOC();
   const modalMsg = document.getElementById('modalMessage');
   const modalTitle = document.getElementById('modalTitle');
   const modalExtra = document.getElementById('modalExtraContent');
-  const modalActions = document.getElementById('modalActions');
   const btnConfirm = document.getElementById('btnConfirmOC');
 
   modalExtra.innerHTML = '';
@@ -1583,12 +1505,35 @@ function confirmarCrearOC() {
     return;
   }
 
-  // 2) Validar que todos los items con cantidad tengan Tax_ID
+  // 2) [V6] Validar que el proveedor tenga contact_id de Books
+  if (!proveedorIdActual || proveedorIdActual.trim() === '') {
+    const statusProveedor = (proveedoresMap[proveedorActual] && proveedoresMap[proveedorActual].status) || 'DESCONOCIDO';
+    modalTitle.textContent = '🚫 Proveedor sin asignar en Books';
+    modalMsg.innerHTML = `No se puede crear la OC porque el proveedor <strong>${esc(proveedorActual)}</strong> no tiene un contacto asignado en Zoho Books.`;
+    modalExtra.innerHTML = `
+      <div style="background:#fef2f2;border:1px solid #fecaca;border-radius:6px;padding:12px;margin-bottom:20px;font-size:12px;color:#991b1b;">
+        <strong>¿Qué hacer?</strong>
+        <ol style="margin:8px 0 0 20px;line-height:1.6;">
+          <li>Ir a <strong>Zoho Books → Compras → Proveedores</strong></li>
+          <li>Verificar que el proveedor exista con el nombre canónico completo</li>
+          <li>En los artículos afectados, confirmar que el campo <strong>Proveedor preferido</strong> esté asignado</li>
+          <li>Esperar la próxima sincronización o actualizar manualmente la vista de Analytics</li>
+          <li>Volver a recargar este widget</li>
+        </ol>
+        <div style="margin-top:10px;font-size:11px;color:#64748b;">
+          Status interno: <code>${esc(statusProveedor)}</code>
+        </div>
+      </div>`;
+    btnConfirm.style.display = 'none';
+    document.getElementById('modalConfirm').classList.remove('hidden');
+    return;
+  }
+
+  // 3) Validar que todos los items con cantidad tengan Tax_ID
   const sinImpuesto = items.filter(it => !it.Tax_ID || it.Tax_ID === 'null');
   if (sinImpuesto.length > 0) {
     modalTitle.textContent = '🚫 Productos sin impuesto configurado';
     modalMsg.innerHTML = `Los siguientes <strong>${sinImpuesto.length}</strong> productos no tienen impuesto de compra configurado en Zoho Inventory. Corríjalos antes de continuar:`;
-
     let listHtml = '<ul class="no-tax-list">';
     sinImpuesto.forEach(it => {
       listHtml += `<li><strong>${esc(it.sku)}</strong> — ${esc(it.descripcion)}</li>`;
@@ -1596,19 +1541,18 @@ function confirmarCrearOC() {
     listHtml += '</ul>';
     listHtml += '<p style="font-size:12px;color:var(--text-secondary);">Abra cada producto en Zoho Inventory → pestaña "General" → campo "Impuesto de compra" → seleccione el impuesto correspondiente. Luego recargue esta ventana.</p>';
     modalExtra.innerHTML = listHtml;
-
     btnConfirm.style.display = 'none';
     document.getElementById('modalConfirm').classList.remove('hidden');
     return;
   }
 
-  // 3) Todo OK: mostrar confirmación normal
+  // 4) Todo OK: mostrar confirmación normal
   modalTitle.textContent = 'Confirmar creación de OC';
   btnConfirm.style.display = '';
   modalMsg.innerHTML =
     `Se creará una OC en <strong>borrador</strong> para <strong>${esc(proveedorActual)}</strong> con <strong>${items.length}</strong> productos.<br>
-    <span style="font-size:12px;color:var(--text-secondary);">Fecha de entrega: <strong>${esc(fechaEntrega)}</strong></span>`;
-
+    <span style="font-size:12px;color:var(--text-secondary);">Fecha de entrega: <strong>${esc(fechaEntrega)}</strong></span><br>
+    <span style="font-size:11px;color:var(--text-muted);">ID Books: <code>${esc(proveedorIdActual)}</code></span>`;
   document.getElementById('modalConfirm').classList.remove('hidden');
 }
 
@@ -1620,14 +1564,12 @@ async function ejecutarCrearOC() {
   cerrarModal();
   const items = obtenerItemsParaOC();
   const fechaEntrega = document.getElementById('inputFechaEntrega').value;
-
-  // Construir snapshot completo para auditoría
   const snapshot = construirSnapshot();
 
   if (MODO_DEMO) {
-    mostrarStatus(`DEMO: Se crearían ${items.length} líneas para ${proveedorActual} con entrega ${fechaEntrega}`, 'success');
+    mostrarStatus(`DEMO: Se crearían ${items.length} líneas para ${proveedorActual} (ID: ${proveedorIdActual}) con entrega ${fechaEntrega}`, 'success');
     console.log('Items para OC:', items);
-    console.log('Fecha entrega:', fechaEntrega);
+    console.log('Proveedor ID:', proveedorIdActual);
     console.log('Snapshot de auditoría:', snapshot);
     return;
   }
@@ -1644,6 +1586,7 @@ async function ejecutarCrearOC() {
       },
       body: JSON.stringify({
         proveedor: proveedorActual,
+        proveedor_id: proveedorIdActual,   // [V6] contact_id canónico de Books
         fecha_entrega: fechaEntrega,
         usuario: USUARIO_ACTUAL,
         items: items,
@@ -1669,109 +1612,80 @@ async function ejecutarCrearOC() {
 }
 
 // ============================================================
-// CONSTRUIR SNAPSHOT DE AUDITORÍA
-// Arma un objeto con TODA la información visible al momento de crear la OC:
-// - Metadatos (proveedor, fecha, usuario, filtros aplicados)
-// - Resumen (conteos y totales)
-// - Lista completa de productos visibles con todos sus valores
-//   incluyendo stock original y ajustado, sugerido backend y widget, modificaciones
+// SNAPSHOT DE AUDITORÍA
 // ============================================================
 function construirSnapshot() {
   const fechaEntrega = document.getElementById('inputFechaEntrega').value;
-
-  // Capturar filtros aplicados
   const filtros = {
     estado: document.getElementById('filtroEstado').value || '',
     abc: document.getElementById('filtroABC').value || '',
     analisis: document.getElementById('filtroAnalisis').value || '',
     buscar: document.getElementById('filtroBuscar').value || ''
   };
-
-  // Construir lista de productos con snapshot completo
   const productosSnapshot = productosFiltrados.map((p) => {
     const idx = productosOriginal.indexOf(p);
     const mod = modificaciones[idx] || {};
-
     const stockOriginal = parseFloat(p.Stock_Sistema) || 0;
     const stockAjustado = (mod.stockAjustado !== undefined && mod.stockAjustado !== null)
-      ? parseFloat(mod.stockAjustado)
-      : null;
+      ? parseFloat(mod.stockAjustado) : null;
     const stockUsado = stockAjustado !== null ? stockAjustado : stockOriginal;
-
     const sugeridoBackend = parseFloat(p.Sugerido) || 0;
     const sugeridoWidget = sugeridoEfectivo(p, idx);
-
     const cantDefault = sugeridoWidget;
     const cantidadFinal = mod.cantidad !== undefined ? mod.cantidad : cantDefault;
-
     const descDefault = parseFloat(p.Descuento_Compra_Item) || parseFloat(p.Descuento_Compra) || 0;
     const descPct = mod.descuento !== undefined ? mod.descuento : descDefault;
-
     const costo = parseFloat(p.Costo_Unitario) || 0;
     const cobertura = calcularCoberturaFinal(p, cantidadFinal, stockUsado);
-
     const taxId = (p.Tax_ID || '').toString().trim();
-
     return {
       codigo: p.Codigo || '',
       descripcion: p.Descripcion || '',
       item_id: p.Item_ID || '',
       tiene_tax_id: !!(taxId && taxId !== 'null'),
       fue_pedido: cantidadFinal > 0,
-      // Clasificación
       rotacion: p.Rotacion || '',
       estado: p.Estado || '',
       analisis_compra: p.Analisis_Compra || '',
-      // Stock e inventario
       stock_sistema: stockOriginal,
       stock_ajustado: stockAjustado,
       stock_usado_en_calculo: stockUsado,
       en_transito: parseFloat(p.En_Transito) || 0,
       pendiente_ov: parseFloat(p.Pendiente_OV) || 0,
-      // Máximos
       maximo_manual: parseFloat(p.Maximo_MANUAL) || 0,
       maximo_calculado: parseFloat(p.Maximo_CALCULADO) || 0,
       maximo_a_usar: parseFloat(p.Maximo_A_Usar) || 0,
-      // Consumo y alcance
       consumo_diario: parseFloat(p.Consumo_Diario) || 0,
       venta_semanal: parseFloat(p.Venta_Semanal) || 0,
       alcance_semanal: parseFloat(p.Alcance_Semanal) || 0,
-      // Sugerido: lo que vino del backend vs lo que mostró el widget (redondeo o recalculo por stock ajustado)
       sugerido_backend: sugeridoBackend,
       sugerido_widget: sugeridoWidget,
       sugerido_fue_recalculado: stockAjustado !== null,
-      // Cantidad final y modificaciones
       cantidad_default: cantDefault,
       cantidad_final: parseFloat(cantidadFinal) || 0,
       cantidad_fue_modificada: mod.cantidad !== undefined,
-      // Descuento y costos
       descuento_default: descDefault,
       descuento_aplicado: descPct,
       descuento_fue_modificado: mod.descuento !== undefined,
       costo_unitario: costo,
       embalaje: embalajeDe(p),
-      // Cobertura
       cobertura_final_dias: cobertura.dias === Infinity ? null : Math.round(cobertura.dias)
     };
   });
-
-  // Calcular contadores del resumen
   const pedidos = productosSnapshot.filter(x => x.fue_pedido);
   const modificados = productosSnapshot.filter(x => x.cantidad_fue_modificada || x.descuento_fue_modificado);
   const stocksAjustados = productosSnapshot.filter(x => x.stock_ajustado !== null);
-
-  // Sumas monetarias
   let subtotal = 0, descuentoTotal = 0;
   pedidos.forEach(x => {
     const sub = x.cantidad_final * x.costo_unitario;
     subtotal += sub;
     descuentoTotal += sub * x.descuento_aplicado / 100;
   });
-
   return {
-    version: 'widget-v5.1',
+    version: 'widget-v6',
     timestamp_iso: new Date().toISOString(),
     proveedor: proveedorActual,
+    proveedor_id: proveedorIdActual,       // [V6] contact_id de Books
     fecha_entrega: fechaEntrega,
     usuario: USUARIO_ACTUAL,
     filtros: filtros,
@@ -1796,7 +1710,6 @@ function obtenerItemsParaOC() {
     const cantidad = mod.cantidad !== undefined ? mod.cantidad : cantDefault;
     const descDefault = parseFloat(p.Descuento_Compra_Item) || parseFloat(p.Descuento_Compra) || 0;
     const descPct = mod.descuento !== undefined ? mod.descuento : descDefault;
-
     if (cantidad > 0) {
       items.push({
         descripcion: p.Descripcion,
@@ -1827,6 +1740,7 @@ function limpiarOC() {
   productosFiltrados = [];
   modificaciones = {};
   proveedorActual = '';
+  proveedorIdActual = '';
   renderTabla();
   ocultarStatus();
 }
@@ -1842,7 +1756,6 @@ function exportarResumen() {
     const total = it.cantidad * it.costo * (1 - it.descuento/100);
     text += `${it.descripcion}\t${it.sku}\t${it.cantidad}\t${it.costo}\t${it.descuento}\t${total.toFixed(2)}\n`;
   });
-
   if (navigator.clipboard) {
     navigator.clipboard.writeText(text).then(() => {
       mostrarStatus(`${items.length} líneas copiadas al portapapeles`, 'success');
@@ -1865,7 +1778,6 @@ function mostrarStatus(msg, type) {
 function ocultarStatus() {
   document.getElementById('statusBar').classList.remove('visible');
 }
-
 function mostrarLoading(show) {
   const container = document.getElementById('tableContainer');
   const existing = container.querySelector('.loading-overlay');
@@ -1878,7 +1790,6 @@ function mostrarLoading(show) {
     existing.remove();
   }
 }
-
 function badgeEstado(estado) {
   const cls = {
     'NEGATIVO': 'badge-negativo',
@@ -1890,14 +1801,11 @@ function badgeEstado(estado) {
   }[estado] || 'badge-normal';
   return `<span class="badge ${cls}">${estado || '—'}</span>`;
 }
-
 function badgeABC(abc) {
   if (!abc || abc === 'SIN CLASIFICACION') return '<span class="badge-abc" style="color:var(--text-muted);">—</span>';
   const cls = abc.startsWith('A') ? 'abc-a' : abc === 'B' ? 'abc-b' : 'abc-c';
   return `<span class="badge-abc ${cls}">${abc}</span>`;
 }
-
-// Formatters
 function fmtNum(n) {
   const v = parseInt(n) || 0;
   return v.toLocaleString('es-CR');
@@ -1918,8 +1826,7 @@ function esc(s) {
 }
 
 // ============================================================
-// DATOS DEMO (para desarrollo fuera de Creator)
-// Incluye los nuevos campos: En_Transito, Pendiente_OV, Maximo_MANUAL, Consumo_Diario
+// DATOS DEMO
 // ============================================================
 function generarDatosDemo(proveedor) {
   const productos = [
