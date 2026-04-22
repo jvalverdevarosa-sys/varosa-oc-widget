@@ -202,6 +202,26 @@
   .status-bar.error { background: #fef2f2; border-color: #fecaca; color: #991b1b; }
   .status-bar.success { background: #f0fdf4; border-color: #bbf7d0; color: #166534; }
   .status-bar.loading { background: #eff6ff; border-color: #bfdbfe; color: #1e40af; }
+  /* [V6.1] Estilo prominente para mensaje de OC creada — más visible y destacado */
+  .status-bar.success-prominent {
+    background: linear-gradient(90deg, #dcfce7 0%, #bbf7d0 100%);
+    border: 2px solid #16a34a;
+    color: #14532d;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 14px 20px;
+    box-shadow: 0 2px 8px rgba(22, 163, 74, 0.15);
+    animation: slideDown 0.3s ease;
+  }
+  .status-bar.success-prominent #statusMessage {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  @keyframes slideDown {
+    from { transform: translateY(-10px); opacity: 0; }
+    to { transform: translateY(0); opacity: 1; }
+  }
 
   /* ===== TABLA ===== */
   .table-container {
@@ -811,6 +831,10 @@
 //        El matching deja de depender del nombre del proveedor.
 //        Soporta fallback al formato legado si el webhook aún
 //        devuelve array de strings en "proveedores".
+// V6.1 - Mejora UX del mensaje de confirmación al crear OC:
+//        mensaje prominente con PO, cantidad de productos y total.
+//        Duración extendida a 15 segundos (antes 4).
+//        Nueva función mostrarStatus con parámetro duracionMs.
 // ============================================================
 
 // ===== CONFIGURACIÓN =====
@@ -1598,7 +1622,27 @@ async function ejecutarCrearOC() {
     const data = await resp.json();
 
     if (data.status === 'success') {
-      mostrarStatus(`✅ OC ${data.po_number} creada exitosamente con ${data.productos_incluidos} productos`, 'success');
+      // [V6.1] Mensaje prominente con ícono, PO destacada, productos y total.
+      // Duración: 15 segundos para que el usuario tenga tiempo de verlo.
+      const totalItems = items.length;
+      let totalEstimado = 0;
+      items.forEach(it => {
+        const sub = (parseFloat(it.cantidad) || 0) * (parseFloat(it.costo) || 0);
+        const desc = sub * ((parseFloat(it.descuento) || 0) / 100);
+        totalEstimado += (sub - desc);
+      });
+      const totalFmt = fmtMoney(totalEstimado);
+      const poNumber = esc(data.po_number || '—');
+      mostrarStatus(
+        `<span style="font-size:20px;">✅</span>
+         <span>OC creada:
+           <strong style="font-size:15px;color:#14532d;">${poNumber}</strong>
+           &middot; ${totalItems} producto${totalItems !== 1 ? 's' : ''}
+           &middot; ${totalFmt}
+         </span>`,
+        'success-prominent',
+        15000
+      );
       modificaciones = {};
       renderTabla();
     } else {
@@ -1682,7 +1726,7 @@ function construirSnapshot() {
     descuentoTotal += sub * x.descuento_aplicado / 100;
   });
   return {
-    version: 'widget-v6',
+    version: 'widget-v6.1',
     timestamp_iso: new Date().toISOString(),
     proveedor: proveedorActual,
     proveedor_id: proveedorIdActual,       // [V6] contact_id de Books
@@ -1766,12 +1810,28 @@ function exportarResumen() {
 // ============================================================
 // UI HELPERS
 // ============================================================
-function mostrarStatus(msg, type) {
+function mostrarStatus(msg, type, duracionMs) {
+  // [V6.1] Nuevo parámetro opcional duracionMs:
+  //   - Si se pasa un número, usa ese tiempo en ms antes de auto-ocultar.
+  //   - Si NO se pasa, mantiene el comportamiento anterior:
+  //       * type 'success' → 4 segundos.
+  //       * otros tipos    → sin auto-ocultar (el usuario cierra con la X).
+  //   - type 'success-prominent' NO se auto-oculta por defecto; requiere
+  //     pasar duracionMs explícito. Uso típico: OC creada con 15000 ms.
   const bar = document.getElementById('statusBar');
   const msgEl = document.getElementById('statusMessage');
   bar.className = 'status-bar visible ' + (type || '');
-  msgEl.textContent = msg;
-  if (type === 'success') {
+  // Soporta HTML dentro del mensaje para el success-prominent (con ícono + PO destacado)
+  if (type === 'success-prominent') {
+    msgEl.innerHTML = msg;
+  } else {
+    msgEl.textContent = msg;
+  }
+
+  // Auto-ocultar: si hay duración explícita, usarla; si no, fallback por type.
+  if (typeof duracionMs === 'number' && duracionMs > 0) {
+    setTimeout(() => { bar.classList.remove('visible'); }, duracionMs);
+  } else if (type === 'success') {
     setTimeout(() => { bar.classList.remove('visible'); }, 4000);
   }
 }
