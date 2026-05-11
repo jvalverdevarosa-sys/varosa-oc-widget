@@ -279,6 +279,7 @@
   .w-transito { width: 70px; }
   .w-pendiente { width: 70px; }
   .w-maxman { width: 70px; }
+  .w-max12m { width: 70px; }
   .w-venta { width: 70px; }
   .w-alcance { width: 65px; }
   .w-sugerido { width: 75px; }
@@ -760,6 +761,7 @@
             <th class="w-transito col-right col-contexto" data-tooltip="Unidades en tránsito (OCs pendientes de recibir)">En Tránsito</th>
             <th class="w-pendiente col-right col-contexto" data-tooltip="Unidades comprometidas en OVs sin despachar">Pendiente OV</th>
             <th class="w-maxman col-right col-contexto" data-tooltip="Máximo manual definido por el comprador (si hay)">Máx. Manual</th>
+            <th class="w-max12m col-right col-contexto" data-tooltip="Pico de venta mensual en los últimos 12 meses calendario">Máx 12m</th>
             <th class="w-venta col-right" data-tooltip="Venta semanal promedio">Vta/Sem</th>
             <th class="w-alcance col-right" data-tooltip="Semanas de alcance con stock actual">Alcance</th>
             <th class="w-sugerido col-right" data-tooltip="Cantidad sugerida (redondeada al embalaje)">Sugerido</th>
@@ -1199,6 +1201,7 @@ function renderTabla() {
     const enTransito = parseInt(p.En_Transito) || 0;
     const pendienteOV = parseInt(p.Pendiente_OV) || 0;
     const maxManual = parseInt(p.Maximo_MANUAL) || 0;
+    const maxMensual12m = parseInt(p.Max_Mensual_12m) || 0;
 
     const cobertura = calcularCoberturaFinal(p, cant, stockActual);
 
@@ -1239,6 +1242,7 @@ function renderTabla() {
       <td class="cell-right cell-contexto ${enTransito > 0 ? 'has-value' : ''}">${enTransito > 0 ? fmtNum(enTransito) : '—'}</td>
       <td class="cell-right cell-contexto ${pendienteOV > 0 ? 'has-value' : ''}">${pendienteOV > 0 ? fmtNum(pendienteOV) : '—'}</td>
       <td class="cell-right cell-contexto ${maxManual > 0 ? 'has-value' : ''}">${maxManual > 0 ? fmtNum(maxManual) : '—'}</td>
+      <td class="cell-right cell-contexto ${maxMensual12m > 0 ? 'has-value' : ''}">${maxMensual12m > 0 ? fmtNum(maxMensual12m) : '—'}</td>
       <td class="cell-right">${fmtDec(p.Venta_Semanal)}</td>
       <td class="cell-right">${fmtDec(p.Alcance_Semanal)}</td>
       <td class="cell-right cell-sugerido-dinamico ${sugeridoFueRecalculado ? 'recalculated' : ''}" data-sugerido-idx="${idx}" style="color:var(--varosa-blue);font-weight:500;" ${sugeridoTooltipAjuste}>${sugeridoMostrar}</td>
