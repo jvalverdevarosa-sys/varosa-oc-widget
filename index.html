@@ -415,33 +415,33 @@
 
     /* ===========================================================
      Cobertura Final: semáforo de inventario [V6.3]
-     Punto de color (●) + texto coloreado para mayor visibilidad.
+     Punto de color (●) a la DERECHA del número.
      Rangos: ≤7 crítico / 8-14 bajo / 15-45 OK / >45 sobre stock.
      =========================================================== */
   td.cell-cobertura {
     font-weight: 600;
     position: relative;
   }
-  td.cell-cobertura::before {
+  td.cell-cobertura::after {
     content: '●';
     display: inline-block;
-    margin-right: 6px;
-    font-size: 16px;
+    margin-left: 6px;
+    font-size: 18px;
     line-height: 1;
     vertical-align: middle;
     position: relative;
     top: -1px;
   }
   .cobertura-critica { color: var(--estado-negativo); }      /* ≤ 7 días */
-  .cobertura-critica::before { color: var(--estado-negativo); }
+  .cobertura-critica::after { color: var(--estado-negativo); }
   .cobertura-baja { color: var(--estado-quiebre); }          /* 8-14 días */
-  .cobertura-baja::before { color: var(--estado-quiebre); }
+  .cobertura-baja::after { color: var(--estado-quiebre); }
   .cobertura-ok { color: var(--estado-normal); }             /* 15-45 días */
-  .cobertura-ok::before { color: var(--estado-normal); }
+  .cobertura-ok::after { color: var(--estado-normal); }
   .cobertura-alta { color: var(--estado-alerta); }           /* > 45 días */
-  .cobertura-alta::before { color: var(--estado-alerta); }
+  .cobertura-alta::after { color: var(--estado-alerta); }
   .cobertura-inf { color: var(--text-muted); }               /* sin consumo */
-  .cobertura-inf::before { color: var(--text-muted); }
+  .cobertura-inf::after { color: var(--text-muted); }
 
   .no-tax-icon {
     display: inline-block;
@@ -786,7 +786,7 @@
             <th class="w-alcance col-right" data-tooltip="Semanas de alcance con stock actual">Alcance</th>
             <th class="w-sugerido col-right" data-tooltip="Cantidad sugerida (redondeada al embalaje)">Sugerido</th>
             <th class="w-cantidad col-right col-editable" data-tooltip="Cantidad a pedir (se ajusta al embalaje)">Cantidad</th>
-            <th class="w-cobertura col-right" data-tooltip="Días de cobertura: (Stock + Tránsito + Cantidad pedida) / Consumo Diario">Cob. Final</th>
+            <th class="w-cobertura col-right" data-tooltip="Días de cobertura: (Stock + Tránsito + Cantidad pedida) / Consumo Diario">Cob. Final (días)</th>
             <th class="w-emb col-right" data-tooltip="Embalaje mínimo">Embal.</th>
             <th class="w-costo col-right">Costo Unit.</th>
             <th class="w-desc-pct col-right col-editable" data-tooltip="% descuento de compra">%Desc</th>
@@ -991,7 +991,7 @@ function calcularCoberturaFinal(producto, cantidadPedida, stockOverride) {
   else if (dias <= 14) clase = 'cobertura-baja';
   else if (dias <= 45) clase = 'cobertura-ok';
   else clase = 'cobertura-alta';
-  return { texto: Math.round(dias) + ' d', dias: dias, clase: clase };
+  return { texto: Math.round(dias).toString(), dias: dias, clase: clase };
 }
 
 // ============================================================
