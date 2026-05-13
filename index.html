@@ -413,15 +413,35 @@
     font-size: 10px;
   }
 
-  /* Cobertura Final: códigos de color por días */
+    /* ===========================================================
+     Cobertura Final: semáforo de inventario [V6.3]
+     Punto de color (●) + texto coloreado para mayor visibilidad.
+     Rangos: ≤7 crítico / 8-14 bajo / 15-45 OK / >45 sobre stock.
+     =========================================================== */
   td.cell-cobertura {
     font-weight: 600;
+    position: relative;
   }
-  .cobertura-critica { color: var(--estado-negativo); }      /* <= 7 días */
+  td.cell-cobertura::before {
+    content: '●';
+    display: inline-block;
+    margin-right: 5px;
+    font-size: 11px;
+    line-height: 1;
+    vertical-align: middle;
+    position: relative;
+    top: -1px;
+  }
+  .cobertura-critica { color: var(--estado-negativo); }      /* ≤ 7 días */
+  .cobertura-critica::before { color: var(--estado-negativo); }
   .cobertura-baja { color: var(--estado-quiebre); }          /* 8-14 días */
+  .cobertura-baja::before { color: var(--estado-quiebre); }
   .cobertura-ok { color: var(--estado-normal); }             /* 15-45 días */
+  .cobertura-ok::before { color: var(--estado-normal); }
   .cobertura-alta { color: var(--estado-alerta); }           /* > 45 días */
+  .cobertura-alta::before { color: var(--estado-alerta); }
   .cobertura-inf { color: var(--text-muted); }               /* sin consumo */
+  .cobertura-inf::before { color: var(--text-muted); }
 
   .no-tax-icon {
     display: inline-block;
@@ -837,9 +857,8 @@
 //        mensaje prominente con PO, cantidad de productos y total.
 //        Duración extendida a 15 segundos (antes 4).
 //        Nueva función mostrarStatus con parámetro duracionMs.
-// V6.2 - Cambio de ordenamiento: ahora alfabético por descripción.
-//        Productos con Sugerido > 0 mantienen prioridad visual arriba.
-//        Aplica tanto al cargar como después de filtrar.
+// V6.3 - Semáforo visual en columna COB FINAL: punto de color (●) + texto.
+//        Cambio solo CSS, lógica de clasificación intacta.
 
 // ============================================================
 
@@ -1740,7 +1759,7 @@ function construirSnapshot() {
     descuentoTotal += sub * x.descuento_aplicado / 100;
   });
   return {
-    version: 'widget-v6.1',
+    version: 'widget-v6.3',
     timestamp_iso: new Date().toISOString(),
     proveedor: proveedorActual,
     proveedor_id: proveedorIdActual,       // [V6] contact_id de Books
