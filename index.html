@@ -837,6 +837,10 @@
 //        mensaje prominente con PO, cantidad de productos y total.
 //        Duración extendida a 15 segundos (antes 4).
 //        Nueva función mostrarStatus con parámetro duracionMs.
+// V6.2 - Cambio de ordenamiento: ahora alfabético por descripción.
+//        Productos con Sugerido > 0 mantienen prioridad visual arriba.
+//        Aplica tanto al cargar como después de filtrar.
+
 // ============================================================
 
 // ===== CONFIGURACIÓN =====
@@ -1095,7 +1099,7 @@ async function cargarProductos() {
   if (MODO_DEMO) {
     setTimeout(() => {
       mostrarLoading(false);
-      productosOriginal = ordenarProductosPorSugerido(generarDatosDemo(proveedor));
+      productosOriginal = ordenarProductosAlfabetico(generarDatosDemo(proveedor));
       aplicarFiltros();
       mostrarStatus(`${productosOriginal.length} productos (DEMO)`, 'success');
     }, 400);
@@ -1115,7 +1119,7 @@ async function cargarProductos() {
     mostrarLoading(false);
 
     if (data.productos && Array.isArray(data.productos)) {
-      productosOriginal = ordenarProductosPorSugerido(data.productos);
+      productosOriginal = ordenarProductosAlfabetico(data.productos);
       aplicarFiltros();
       mostrarStatus(`${productosOriginal.length} productos cargados para ${proveedor}`, 'success');
     } else {
