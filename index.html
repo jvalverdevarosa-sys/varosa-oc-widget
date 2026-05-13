@@ -19,7 +19,7 @@
     --bg-editable: #fffef5;
     --bg-readonly: #f1f5f9;
     --border-light: #e2e8f0;
-    --border-focus: var(--varosa-cyan);
+    --border-focus: var(--varosa-c);
     --text-primary: #1e293b;
     --text-secondary: #64748b;
     --text-muted: #94a3b8;
@@ -890,23 +890,26 @@ function sugeridoRedondeado(producto) {
 }
 
 // ============================================================
-// ORDENAMIENTO INICIAL POR SUGERIDO (descendente)  [V5.1]
+// ORDENAMIENTO ALFABÉTICO  [V6.2]
+// Ordena por descripción A→Z, pero los productos con Sugerido > 0
+// aparecen primero (también ordenados alfabéticamente entre sí).
+// Esto preserva la utilidad operativa: el comprador ve arriba lo
+// que el sistema sugiere pedir, sin perder el escaneo alfabético.
 // ============================================================
-function ordenarProductosPorSugerido(productos) {
+function ordenarProductosAlfabetico(productos) {
   return [...productos].sort((a, b) => {
     const sugA = sugeridoRedondeado(a);
     const sugB = sugeridoRedondeado(b);
+    // Productos con sugerido > 0 van primero
     if (sugA > 0 && sugB === 0) return -1;
     if (sugA === 0 && sugB > 0) return 1;
-    if (sugA > 0 && sugB > 0) {
-      if (sugB !== sugA) return sugB - sugA;
-      const brutoA = parseFloat(a.Sugerido) || 0;
-      const brutoB = parseFloat(b.Sugerido) || 0;
-      return brutoB - brutoA;
-    }
-    return (a.Codigo || '').localeCompare(b.Codigo || '');
+    // Dentro de cada grupo: orden alfabético por descripción
+    const descA = (a.Descripcion || '').toLocaleLowerCase('es-CR');
+    const descB = (b.Descripcion || '').toLocaleLowerCase('es-CR');
+    return descA.localeCompare(descB, 'es-CR', { sensitivity: 'base', numeric: true });
   });
 }
+
 
 // ============================================================
 // CÁLCULO DINÁMICO DEL SUGERIDO (Fórmula V6 - Backend ARNOLD)
@@ -1148,6 +1151,9 @@ function aplicarFiltros() {
     }
     return true;
   });
+
+  // [V6.2] Reordenar alfabéticamente después de filtrar
+  productosFiltrados = ordenarProductosAlfabetico(productosFiltrados);
 
   renderTabla();
 }
