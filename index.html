@@ -694,6 +694,8 @@
   <div class="app-header">
     <h1>Órdenes de Compra</h1>
     <div class="header-actions">
+      <span id="lblUltimaActualizacion" style="font-size:11px;opacity:0.85;align-self:center;margin-right:4px;"></span>
+      <button id="btnActualizarStock" onclick="actualizarStockVivo()" title="Trae el inventario más reciente desde Books">↻ Actualizar stock</button>
       <button onclick="limpiarOC()">Nuevo</button>
       <button onclick="exportarResumen()">Exportar</button>
       <button class="btn-crear" id="btnCrearOC" onclick="confirmarCrearOC()" disabled>
@@ -868,6 +870,7 @@ const ENDPOINTS = {
   proveedores: `${N8N_BASE}/webhook/oc-proveedores`,
   productos:   `${N8N_BASE}/webhook/oc-productos`,
   crearOC:     `${N8N_BASE}/webhook/oc-crear`,
+  refrescarStock: `${N8N_BASE}/webhook/oc-refrescar-stock`,
 };
 
 // ===== CAPTURA DE USUARIO (desde URL parameter) =====
@@ -1840,6 +1843,55 @@ function exportarResumen() {
   }
 }
 
+// ============================================================
+// ACTUALIZAR STOCK VIVO (dispara el refresco en n8n)
+// ============================================================
+let actualizandoStock = false;
+async function actualizarStockVivo() {
+  if (actualizandoStock) return; // debounce: evita doble clic
+  const btn = document.getElementById('btnActualizarStock');
+  const textoOriginal = btn.textContent;
+  actualizandoStock = true;
+  btn.disabled = true;
+  btn.textContent = '⏳ Actualizando…';
+  mostrarStatus('Actualizando stock desde Books… (puede tardar hasta ~½ minuto)', 'loading');
+
+  try {
+    const resp = await fetch(ENDPOINTS.refrescarStock, {
+      method: 'POST',
+      headers: { 'Accept': 'application/json' }
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+
+    let info = '';
+    try {
+      const data = await resp.json();
+      const n = data?.result?.importSummary?.successRowCount
+             ?? data?.importSummary?.successRowCount;
+      if (n) info = ' · ' + n + ' ítems';
+    } catch (_) { /* el conteo es opcional */ }
+
+    const hora = new Date().toLocaleTimeString('es-CR', { hour: '2-digit', minute: '2-digit' });
+    document.getElementById('lblUltimaActualizacion').textContent = 'Stock actualizado: ' + hora;
+    mostrarStatus('✓ Stock actualizado' + info + ' · ' + hora, 'success', 8000);
+
+    // Si hay un proveedor cargado y SIN ediciones pendientes, recargar para ver el stock nuevo
+    if (proveedorActual) {
+      if (Object.keys(modificaciones).length === 0) {
+        await cargarProductos();
+      } else {
+        mostrarStatus('✓ Stock actualizado' + info + ' — recargá el proveedor para ver los valores nuevos (tenés cambios sin guardar)', 'success', 10000);
+      }
+    }
+  } catch (e) {
+    mostrarStatus('Error al actualizar stock: ' + e.message, 'error');
+  } finally {
+    actualizandoStock = false;
+    btn.disabled = false;
+    btn.textContent = textoOriginal;
+  }
+} 
+  
 // ============================================================
 // UI HELPERS
 // ============================================================
